@@ -111,7 +111,6 @@ export default function Home() {
   const workspaceService = run.services.find((service) => service.name === 'osa-cloud-workspace');
   const healthyRunServices = run.services.filter((service) => Boolean(service.latestReadyRevision)).length;
   const systemHealthy = Boolean(status?.connected) && !vmError && run.errors.length === 0;
-  const activeLabel = menu.find((item) => item.id === section)?.label ?? (section === 'advanced' ? 'Zaawansowane' : 'Pulpit');
 
   return (
     <main className="workspaceShell">
@@ -177,7 +176,7 @@ export default function Home() {
                 <MetricCard icon="⬡" value={run.errors.length ? 'UNKNOWN' : run.services.length} label="Usługi Cloud Run" meta={`${healthyRunServices}/${run.services.length || 0} z gotową rewizją`} />
                 <MetricCard icon="▣" value={vmError ? 'UNKNOWN' : vms.length} label="Maszyny VM" meta={vms.length ? 'Compute Engine' : 'Brak wykrytych VM'} />
                 <MetricCard icon="◎" value={status?.regions.length ?? 0} label="Regiony obserwowane" meta={status?.regions.join(' · ') || 'Brak konfiguracji'} />
-                <MetricCard icon="✦" value={status?.connected ? 'ADC' : 'UNKNOWN'} label="Tożsamość backendu" meta={status?.connected ? 'Service Account / ADC' : 'Brak potwierdzenia'} />
+                <MetricCard icon="✦" value={status?.connected ? 'ADC' : 'UNKNOWN'} label="Tożsamość backendu" meta={status?.connected ? 'ADC' : 'Brak potwierdzenia'} />
               </section>
 
               <section className="glassPanel identityPanel">
@@ -190,7 +189,7 @@ export default function Home() {
                 </div>
                 <div className="identityRows">
                   <KeyValue label="Projekt" value={status?.projectId ?? 'UNKNOWN'} />
-                  <KeyValue label="Uwierzytelnianie" value={status?.connected ? 'ADC / Service Account' : 'UNKNOWN'} />
+                  <KeyValue label="Uwierzytelnianie" value={status?.connected ? 'ADC' : 'UNKNOWN'} />
                   <KeyValue label="Regiony Cloud Run" value={status?.regions.join(', ') || 'UNKNOWN'} />
                   <KeyValue label="Aktualna rewizja Workspace" value={workspaceService?.latestReadyRevision ?? 'UNKNOWN'} />
                 </div>
