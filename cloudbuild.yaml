@@ -28,6 +28,8 @@ steps:
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
 
+serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/osa-cloud-build@$PROJECT_ID.iam.gserviceaccount.com'
+
 substitutions:
   _REGION: 'europe-west1'
   _AR_REPO: 'osa-cloud-workspace'
