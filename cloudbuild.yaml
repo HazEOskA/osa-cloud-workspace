@@ -1,0 +1,39 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - '${_SERVICE_NAME}'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--service-account=${_RUNTIME_SERVICE_ACCOUNT}'
+      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GCP_REGIONS=${_GCP_REGIONS}'
+      - '--no-allow-unauthenticated'
+      - '--quiet'
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE_NAME}:$SHORT_SHA'
+
+substitutions:
+  _REGION: 'europe-west1'
+  _AR_REPO: 'osa-cloud-workspace'
+  _SERVICE_NAME: 'osa-cloud-workspace'
+  _RUNTIME_SERVICE_ACCOUNT: 'osa-cloud-workspace-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+  _GCP_REGIONS: 'europe-west1,europe-west4'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
