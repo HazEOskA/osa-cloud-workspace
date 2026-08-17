@@ -99,11 +99,6 @@ export async function submitPublicRepoDeploy(input: RepoDeployRequest): Promise<
     ],
     images: [image],
     serviceAccount: buildServiceAccount,
-    substitutions: {
-      _OSA_REPO: repo,
-      _OSA_BRANCH: branch,
-      _SERVICE_NAME: serviceName,
-    },
     options: {
       logging: 'CLOUD_LOGGING_ONLY',
     },
