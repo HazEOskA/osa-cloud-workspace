@@ -33,6 +33,27 @@ type CloudRunResult = {
   errors: Array<{ region: string; message: string }>;
 };
 
+type CloudBuildSummary = {
+  id: string;
+  status: string;
+  createTime: string | null;
+  startTime: string | null;
+  finishTime: string | null;
+  commitSha: string | null;
+  serviceName: string | null;
+  image: string | null;
+  statusDetail: string | null;
+  buildTriggerId: string | null;
+  logUrl: string | null;
+};
+
+type CloudBuildResult = {
+  builds: CloudBuildSummary[];
+  scope: 'global';
+  service: 'osa-cloud-workspace';
+  error?: string;
+};
+
 type Section =
   | 'pulpit'
   | 'aplikacje'
@@ -62,7 +83,12 @@ const menu: Array<{ id: Section; label: string; icon: string }> = [
 async function readJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: 'no-store' });
   const data = (await response.json()) as T;
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    const message = typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string'
+      ? data.error
+      : `HTTP ${response.status}`;
+    throw new Error(message);
+  }
   return data;
 }
 
@@ -72,14 +98,17 @@ export default function Home() {
   const [vms, setVms] = useState<Vm[]>([]);
   const [vmError, setVmError] = useState<string | null>(null);
   const [run, setRun] = useState<CloudRunResult>({ services: [], errors: [] });
+  const [builds, setBuilds] = useState<CloudBuildSummary[]>([]);
+  const [buildError, setBuildError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
     setLoading(true);
-    const [statusResult, vmResult, runResult] = await Promise.allSettled([
+    const [statusResult, vmResult, runResult, buildResult] = await Promise.allSettled([
       readJson<Status>('/api/gcp/status'),
       readJson<{ vms: Vm[]; error?: string }>('/api/gcp/vms'),
       readJson<CloudRunResult>('/api/gcp/cloud-run'),
+      readJson<CloudBuildResult>('/api/gcp/builds'),
     ]);
 
     if (statusResult.status === 'fulfilled') setStatus(statusResult.value);
@@ -95,6 +124,14 @@ export default function Home() {
 
     if (runResult.status === 'fulfilled') setRun(runResult.value);
     else setRun({ services: [], errors: [{ region: 'UNKNOWN', message: String(runResult.reason) }] });
+
+    if (buildResult.status === 'fulfilled') {
+      setBuilds(buildResult.value.builds ?? []);
+      setBuildError(buildResult.value.error ?? null);
+    } else {
+      setBuilds([]);
+      setBuildError(buildResult.reason instanceof Error ? buildResult.reason.message : String(buildResult.reason));
+    }
 
     setLoading(false);
   }
@@ -287,7 +324,36 @@ export default function Home() {
           )}
 
           {section === 'strony' && <TruthPanel title="Strony WWW" text="Moduł domen, hostingu i publicznych endpointów czeka na podłączenie do realnych API. Brak evidence = UNKNOWN." />}
-          {section === 'wdrozenia' && <TruthPanel title="Wdrożenia" text="Historia Cloud Build i rewizji Cloud Run nie jest jeszcze pobierana przez backend. Obecny deploy działa, ale ten ekran pozostaje UNKNOWN do czasu adaptera." />}
+          {section === 'wdrozenia' && (
+            <ResourcePanel eyebrow="CLOUD BUILD API" title="Wdrożenia" badge={buildError ? 'UNKNOWN' : `${builds.length} buildów`}>
+              {buildError && <div className="alert"><strong>Cloud Build API:</strong> {buildError}</div>}
+              <div className="identityRows">
+                <KeyValue label="Service" value="osa-cloud-workspace" />
+                <KeyValue label="Cloud Run LIVE revision" value={workspaceService?.latestReadyRevision ?? 'UNKNOWN'} />
+                <KeyValue label="Successful build linked to LIVE" value="UNKNOWN" />
+              </div>
+              {!buildError && builds.length === 0 && <p className="empty">API odpowiedziało poprawnie, ale nie znaleziono buildów dla osa-cloud-workspace.</p>}
+              <div className="resourceRows">
+                {builds.map((build) => (
+                  <article key={build.id} className="resourceRow">
+                    <div className="resourcePrimary">
+                      <div className="resourceIcon">⇧</div>
+                      <div>
+                        <strong>Commit: {build.commitSha ?? 'UNKNOWN'}</strong>
+                        <span>Utworzono: {formatBuildTime(build.createTime)}</span>
+                        <span>Image: {build.image ?? 'UNKNOWN'}</span>
+                        {build.statusDetail && <span>Status detail: {build.statusDetail}</span>}
+                      </div>
+                    </div>
+                    <div className="resourceActions">
+                      <BuildStatusPill status={build.status} />
+                      {build.logUrl && <a href={build.logUrl} target="_blank" rel="noreferrer">Logi ↗</a>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </ResourcePanel>
+          )}
           {section === 'github' && <TruthPanel title="GitHub → GCP" text="Pipeline działa: kod z repo buduje obraz, trafia do Artifact Registry i jest wdrażany do Cloud Run. Następny krok to widok historii i sterowanie wdrożeniami." />}
           {section === 'automatyzacje' && <TruthPanel title="Automatyzacje" text="Scheduler, Pub/Sub i Workflows nie są jeszcze podłączone do Workspace." />}
           {section === 'ai' && <TruthPanel title="AI" text="Warstwa Vertex AI / Gemini nie jest jeszcze podłączona do tego interfejsu." />}
@@ -313,6 +379,24 @@ function MetricCard({ icon, value, label, meta }: { icon: string; value: string 
 
 function KeyValue({ label, value }: { label: string; value: string }) {
   return <div className="keyValue"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function formatBuildTime(value: string | null): string {
+  if (!value) return 'UNKNOWN';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('pl-PL');
+}
+
+function BuildStatusPill({ status }: { status: string }) {
+  const failureStatuses = new Set(['FAILURE', 'INTERNAL_ERROR', 'TIMEOUT', 'CANCELLED', 'EXPIRED']);
+  const workingStatuses = new Set(['QUEUED', 'PENDING', 'WORKING']);
+
+  if (status === 'SUCCESS') return <span className="pill ok">{status}</span>;
+  if (failureStatuses.has(status)) {
+    return <span className="pill" style={{ borderColor: '#6b3038', background: '#251015', color: '#e58b96' }}>{status}</span>;
+  }
+  if (workingStatuses.has(status)) return <span className="pill protected">{status}</span>;
+  return <span className="pill">{status || 'UNKNOWN'}</span>;
 }
 
 function ResourcePanel({ eyebrow, title, badge, children }: { eyebrow: string; title: string; badge: string; children: React.ReactNode }) {

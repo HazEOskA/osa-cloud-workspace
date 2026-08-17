@@ -29,6 +29,20 @@ export type CloudRunServiceSummary = {
   latestReadyRevision: string | null;
 };
 
+export type CloudBuildSummary = {
+  id: string;
+  status: string;
+  createTime: string | null;
+  startTime: string | null;
+  finishTime: string | null;
+  commitSha: string | null;
+  serviceName: string | null;
+  image: string | null;
+  statusDetail: string | null;
+  buildTriggerId: string | null;
+  logUrl: string | null;
+};
+
 export function getConfiguredRegions(): string[] {
   return (process.env.GCP_REGIONS ?? '')
     .split(',')
@@ -132,6 +146,83 @@ type CloudRunListResponse = {
     latestReadyRevision?: string;
   }>;
 };
+
+type CloudBuildListResponse = {
+  builds?: Array<{
+    id?: string;
+    status?: string;
+    createTime?: string;
+    startTime?: string;
+    finishTime?: string;
+    substitutions?: Record<string, string>;
+    source?: {
+      repoSource?: {
+        commitSha?: string;
+      };
+    };
+    images?: string[];
+    statusDetail?: string;
+    buildTriggerId?: string;
+    logUrl?: string;
+  }>;
+};
+
+const WORKSPACE_SERVICE = 'osa-cloud-workspace';
+const WORKSPACE_IMAGE_PATH = '/osa-cloud-workspace/osa-cloud-workspace:';
+
+export async function listCloudBuilds(): Promise<{
+  builds: CloudBuildSummary[];
+  scope: 'global';
+  service: 'osa-cloud-workspace';
+}> {
+  const projectId = await resolveProjectId();
+  const data = await gcpGet<CloudBuildListResponse>(
+    `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/builds?pageSize=100`,
+  );
+
+  const builds = (data.builds ?? [])
+    .filter((build) => {
+      const substitutions = build.substitutions ?? {};
+      return (
+        substitutions._SERVICE_NAME === WORKSPACE_SERVICE
+        || substitutions._AR_REPO === WORKSPACE_SERVICE
+        || (build.images ?? []).some((image) => image.includes(WORKSPACE_IMAGE_PATH))
+      );
+    })
+    .map((build): CloudBuildSummary => {
+      const substitutions = build.substitutions ?? {};
+      const workspaceImage = (build.images ?? []).find((image) => image.includes(WORKSPACE_IMAGE_PATH));
+
+      return {
+        id: build.id ?? 'UNKNOWN',
+        status: build.status ?? 'UNKNOWN',
+        createTime: build.createTime ?? null,
+        startTime: build.startTime ?? null,
+        finishTime: build.finishTime ?? null,
+        commitSha:
+          substitutions.COMMIT_SHA ??
+          substitutions.SHORT_SHA ??
+          build.source?.repoSource?.commitSha ??
+          null,
+        serviceName: substitutions._SERVICE_NAME ?? null,
+        image: workspaceImage ?? build.images?.[0] ?? null,
+        statusDetail: build.statusDetail ?? null,
+        buildTriggerId: build.buildTriggerId ?? null,
+        logUrl: build.logUrl ?? null,
+      };
+    })
+    .sort((a, b) => {
+      const aTime = a.createTime ? Date.parse(a.createTime) : 0;
+      const bTime = b.createTime ? Date.parse(b.createTime) : 0;
+      return bTime - aTime;
+    });
+
+  return {
+    builds,
+    scope: 'global',
+    service: WORKSPACE_SERVICE,
+  };
+}
 
 export async function listCloudRunServices(): Promise<{
   services: CloudRunServiceSummary[];
