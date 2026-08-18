@@ -16,6 +16,19 @@ type RepoResult = {
   error?: string;
 };
 
+type Branch = {
+  name: string;
+  protected: boolean;
+};
+
+type BranchResult = {
+  owner: string;
+  repo: string;
+  branches: Branch[];
+  scope: 'public';
+  error?: string;
+};
+
 type DeployResult = {
   accepted: true;
   operationName: string | null;
@@ -35,14 +48,41 @@ function toServiceName(name: string): string {
 
 export default function DeployPage() {
   const [repos, setRepos] = useState<Repo[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [repoName, setRepoName] = useState('');
-  const [branch, setBranch] = useState('main');
+  const [branch, setBranch] = useState('');
   const [serviceName, setServiceName] = useState('');
   const [token, setToken] = useState('');
   const [loadingRepos, setLoadingRepos] = useState(true);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DeployResult | null>(null);
+
+  async function loadBranches(repo: Repo) {
+    setLoadingBranches(true);
+    setBranchError(null);
+    setBranches([]);
+    setBranch(repo.defaultBranch);
+
+    try {
+      const response = await fetch(`/api/branches?repo=${encodeURIComponent(repo.name)}`, { cache: 'no-store' });
+      const data = (await response.json()) as BranchResult;
+      if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+
+      setBranches(data.branches);
+      if (data.branches.some((item) => item.name === repo.defaultBranch)) {
+        setBranch(repo.defaultBranch);
+      } else if (data.branches[0]) {
+        setBranch(data.branches[0].name);
+      }
+    } catch (cause) {
+      setBranchError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoadingBranches(false);
+    }
+  }
 
   useEffect(() => {
     const stored = window.sessionStorage.getItem('osa-admin-token');
@@ -57,8 +97,8 @@ export default function DeployPage() {
         const first = data.repos[0];
         if (first) {
           setRepoName(first.name);
-          setBranch(first.defaultBranch);
           setServiceName(toServiceName(first.name));
+          await loadBranches(first);
         }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -69,13 +109,20 @@ export default function DeployPage() {
   }, []);
 
   const selectedRepo = useMemo(() => repos.find((repo) => repo.name === repoName) ?? null, [repos, repoName]);
+  const branchOptions = branches.length > 0
+    ? branches
+    : branch
+      ? [{ name: branch, protected: false }]
+      : [];
 
   function onRepoChange(nextName: string) {
     setRepoName(nextName);
+    setResult(null);
+    setError(null);
     const next = repos.find((repo) => repo.name === nextName);
     if (next) {
-      setBranch(next.defaultBranch);
       setServiceName(toServiceName(next.name));
+      void loadBranches(next);
     }
   }
 
@@ -111,7 +158,7 @@ export default function DeployPage() {
         <div style={{ marginTop: 28, marginBottom: 24 }}>
           <div style={{ color: '#78d6b0', fontSize: 12, letterSpacing: 2 }}>GITHUB → CLOUD BUILD → CLOUD RUN</div>
           <h1 style={{ margin: '8px 0', fontSize: 36 }}>Repo Deploy MVP</h1>
-          <p style={{ color: '#9fb3c8', margin: 0 }}>Dzisiaj: publiczne repo HazEOskA z Dockerfile → Artifact Registry → publiczny Cloud Run.</p>
+          <p style={{ color: '#9fb3c8', margin: 0 }}>Publiczne repo HazEOskA z Dockerfile → Artifact Registry → publiczny Cloud Run.</p>
         </div>
 
         <section style={{ border: '1px solid #25303a', borderRadius: 18, padding: 24, background: '#0d1218' }}>
@@ -126,12 +173,22 @@ export default function DeployPage() {
           </select>
 
           <label style={{ display: 'block', marginBottom: 8, color: '#9fb3c8' }}>Branch</label>
-          <input
+          <select
             value={branch}
             onChange={(event) => setBranch(event.target.value)}
-            disabled={deploying}
-            style={{ width: '100%', boxSizing: 'border-box', padding: 12, borderRadius: 10, background: '#111821', color: '#fff', border: '1px solid #2d3945', marginBottom: 18 }}
-          />
+            disabled={deploying || loadingBranches || !branch}
+            style={{ width: '100%', padding: 12, borderRadius: 10, background: '#111821', color: '#fff', border: '1px solid #2d3945', marginBottom: branchError ? 8 : 18 }}
+          >
+            {loadingBranches && <option value={branch || ''}>Ładowanie branchy…</option>}
+            {!loadingBranches && branchOptions.map((item) => (
+              <option key={item.name} value={item.name}>{item.name}{item.protected ? ' · protected' : ''}</option>
+            ))}
+          </select>
+          {branchError && (
+            <div style={{ marginBottom: 18, color: '#e6b86b', fontSize: 13 }}>
+              Nie udało się pobrać pełnej listy branchy. Używam domyślnego brancha: {branch || 'UNKNOWN'}. ({branchError})
+            </div>
+          )}
 
           <label style={{ display: 'block', marginBottom: 8, color: '#9fb3c8' }}>Cloud Run service</label>
           <input
