@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type {
+  CloudBuildSummary,
+  CloudRunServiceSummary,
+  DeploymentInventoryItem,
+  ProvenanceReason,
+} from '@/lib/provenance';
 
 type Status = {
   connected: boolean;
   projectId: string | null;
   identity: 'ADC';
+  principal: string | null;
   regions: string[];
   error?: string;
 };
@@ -20,38 +27,20 @@ type Vm = {
   externalIp: string | null;
 };
 
-type CloudRunService = {
-  name: string;
-  region: string;
-  uri: string | null;
-  generation: string | null;
-  latestReadyRevision: string | null;
+type InventoryError = {
+  source: 'identity' | 'cloud-build' | 'cloud-run-service' | 'cloud-run-revision' | 'artifact-registry';
+  scope: string;
+  resource: string | null;
+  message: string;
 };
 
-type CloudRunResult = {
-  services: CloudRunService[];
-  errors: Array<{ region: string; message: string }>;
-};
-
-type CloudBuildSummary = {
-  id: string;
-  status: string;
-  createTime: string | null;
-  startTime: string | null;
-  finishTime: string | null;
-  commitSha: string | null;
-  serviceName: string | null;
-  image: string | null;
-  statusDetail: string | null;
-  buildTriggerId: string | null;
-  logUrl: string | null;
-};
-
-type CloudBuildResult = {
+type InventoryResult = {
+  deployments: DeploymentInventoryItem[];
+  services: CloudRunServiceSummary[];
   builds: CloudBuildSummary[];
-  scope: 'global';
-  service: 'osa-cloud-workspace';
-  error?: string;
+  artifacts: Array<{ uri: string; digest: string }>;
+  errors: InventoryError[];
+  scope: { builds: 'global'; regions: string[] };
 };
 
 type Section =
@@ -92,62 +81,77 @@ async function readJson<T>(url: string): Promise<T> {
   return data;
 }
 
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export default function Home() {
   const [section, setSection] = useState<Section>('pulpit');
   const [status, setStatus] = useState<Status | null>(null);
   const [vms, setVms] = useState<Vm[]>([]);
   const [vmError, setVmError] = useState<string | null>(null);
-  const [run, setRun] = useState<CloudRunResult>({ services: [], errors: [] });
-  const [builds, setBuilds] = useState<CloudBuildSummary[]>([]);
-  const [buildError, setBuildError] = useState<string | null>(null);
+  const [inventory, setInventory] = useState<InventoryResult | null>(null);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    const [statusResult, vmResult, runResult, buildResult] = await Promise.allSettled([
+    const [statusResult, vmResult, inventoryResult] = await Promise.allSettled([
       readJson<Status>('/api/gcp/status'),
       readJson<{ vms: Vm[]; error?: string }>('/api/gcp/vms'),
-      readJson<CloudRunResult>('/api/gcp/cloud-run'),
-      readJson<CloudBuildResult>('/api/gcp/builds'),
+      readJson<InventoryResult>('/api/gcp/deployments'),
     ]);
 
     if (statusResult.status === 'fulfilled') setStatus(statusResult.value);
-    else setStatus({ connected: false, projectId: null, identity: 'ADC', regions: [], error: String(statusResult.reason) });
+    else {
+      setStatus({
+        connected: false,
+        projectId: null,
+        identity: 'ADC',
+        principal: null,
+        regions: [],
+        error: message(statusResult.reason),
+      });
+    }
 
     if (vmResult.status === 'fulfilled') {
       setVms(vmResult.value.vms ?? []);
       setVmError(vmResult.value.error ?? null);
     } else {
       setVms([]);
-      setVmError(String(vmResult.reason));
+      setVmError(message(vmResult.reason));
     }
 
-    if (runResult.status === 'fulfilled') setRun(runResult.value);
-    else setRun({ services: [], errors: [{ region: 'UNKNOWN', message: String(runResult.reason) }] });
-
-    if (buildResult.status === 'fulfilled') {
-      setBuilds(buildResult.value.builds ?? []);
-      setBuildError(buildResult.value.error ?? null);
+    if (inventoryResult.status === 'fulfilled') {
+      setInventory(inventoryResult.value);
+      setInventoryError(null);
     } else {
-      setBuilds([]);
-      setBuildError(buildResult.reason instanceof Error ? buildResult.reason.message : String(buildResult.reason));
+      setInventory(null);
+      setInventoryError(message(inventoryResult.reason));
     }
 
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
-  const connectionLabel = useMemo(() => {
-    if (loading) return 'SPRAWDZANIE';
-    return status?.connected ? 'POŁĄCZONO' : 'NIEPOŁĄCZONE';
-  }, [loading, status]);
+  const connectionLabel = loading && !status ? 'SPRAWDZANIE' : status?.connected ? 'POŁĄCZONO' : 'NIEPOŁĄCZONE';
 
-  const workspaceService = run.services.find((service) => service.name === 'osa-cloud-workspace');
-  const healthyRunServices = run.services.filter((service) => Boolean(service.latestReadyRevision)).length;
-  const systemHealthy = Boolean(status?.connected) && !vmError && run.errors.length === 0;
+  const services = inventory?.services ?? [];
+  const builds = inventory?.builds ?? [];
+  const deployments = inventory?.deployments ?? [];
+  const inventoryErrors = inventory?.errors ?? [];
+  const runErrors = inventoryErrors.filter((error) => error.source.startsWith('cloud-run'));
+  const buildErrors = inventoryErrors.filter((error) => error.source === 'cloud-build');
+  const artifactErrors = inventoryErrors.filter((error) => error.source === 'artifact-registry');
+  const verifiedDeployments = deployments.filter((deployment) => deployment.provenance === 'VERIFIED').length;
+  const workspaceService = services.find((service) => service.name === 'osa-cloud-workspace');
+  const hasPartialEvidence = Boolean(inventory) && inventoryErrors.length > 0 && (
+    services.length > 0 || builds.length > 0 || deployments.length > 0
+  );
+  const systemHealthy = Boolean(status?.connected) && !vmError && !inventoryError && inventoryErrors.length === 0;
 
   return (
     <main className="workspaceShell">
@@ -156,7 +160,7 @@ export default function Home() {
           <div className="osaMark">OSA</div>
           <div>
             <div className="brandName">OSA Cloud</div>
-            <div className="brandSub">Workspace</div>
+            <div className="brandSub">Workspace · read-only</div>
           </div>
         </div>
 
@@ -179,7 +183,7 @@ export default function Home() {
         <header className="topbar">
           <div>
             <div className="eyebrow">OSA CLOUD WORKSPACE</div>
-            <h1>Konsola</h1>
+            <h1>Mobilna sterownia</h1>
           </div>
           <div className="topbarStatus">
             <span className={status?.connected ? 'statusDot ok' : 'statusDot'} />
@@ -191,52 +195,68 @@ export default function Home() {
         </header>
 
         <div className="pageWrap">
+          {loading && <div className="loadingStrip" role="status">Odczytuję GitHub → Cloud Build → Artifact Registry → Cloud Run…</div>}
           {status?.error && <div className="alert"><strong>Połączenie GCP:</strong> {status.error}</div>}
 
           {section === 'pulpit' && (
             <div className="dashboard">
               <section className="welcomeRow">
                 <div>
-                  <h2>Dzień dobry.</h2>
-                  <p>Oto stan Twojej infrastruktury Google Cloud.</p>
+                  <h2>Stan bez zgadywania.</h2>
+                  <p>Brak deterministycznego dowodu zawsze pozostaje jako UNKNOWN.</p>
                 </div>
                 <div className={systemHealthy ? 'systemBadge healthy' : 'systemBadge'}>
-                  <span className="statusDot ok" />
+                  <span className={systemHealthy ? 'statusDot ok' : 'statusDot'} />
                   <div>
-                    <strong>{systemHealthy ? 'Połączenie działa' : 'Wymaga uwagi'}</strong>
-                    <span>{loading ? 'Trwa odczyt danych' : 'Dane pochodzą z aktywnych API GCP'}</span>
+                    <strong>{systemHealthy ? 'Pełny odczyt' : hasPartialEvidence ? 'Odczyt częściowy' : 'Wymaga uwagi'}</strong>
+                    <span>{loading ? 'Trwa pobieranie danych' : hasPartialEvidence ? 'Część regionów lub API zwróciła błąd' : 'Dane wyłącznie z aktywnych API'}</span>
                   </div>
                 </div>
               </section>
 
               <section className="metricGrid">
-                <MetricCard icon="⬡" value={run.errors.length ? 'UNKNOWN' : run.services.length} label="Usługi Cloud Run" meta={`${healthyRunServices}/${run.services.length || 0} z gotową rewizją`} />
-                <MetricCard icon="▣" value={vmError ? 'UNKNOWN' : vms.length} label="Maszyny VM" meta={vms.length ? 'Compute Engine' : 'Brak wykrytych VM'} />
-                <MetricCard icon="◎" value={status?.regions.length ?? 0} label="Regiony obserwowane" meta={status?.regions.join(' · ') || 'Brak konfiguracji'} />
-                <MetricCard icon="✦" value={status?.connected ? 'ADC' : 'UNKNOWN'} label="Tożsamość backendu" meta={status?.connected ? 'ADC' : 'Brak potwierdzenia'} />
+                <MetricCard
+                  icon="⬡"
+                  value={inventory ? services.length : 'UNKNOWN'}
+                  label="Usługi Cloud Run"
+                  meta={runErrors.length ? `PARTIAL · ${runErrors.length} błędów odczytu` : `${services.filter((service) => service.latestReadyRevision).length} z gotową rewizją`}
+                />
+                <MetricCard icon="▣" value={vmError ? 'UNKNOWN' : vms.length} label="Maszyny VM" meta={vmError ? 'Błąd Compute Engine API' : 'Tylko odczyt'} />
+                <MetricCard
+                  icon="⇧"
+                  value={inventory ? builds.length : 'UNKNOWN'}
+                  label="Cloud Build"
+                  meta={buildErrors.length ? 'Odczyt UNKNOWN' : 'Zakres globalny'}
+                />
+                <MetricCard
+                  icon="⌁"
+                  value={inventory ? `${verifiedDeployments}/${deployments.length}` : 'UNKNOWN'}
+                  label="Provenance VERIFIED"
+                  meta="Digest → build → SHA"
+                />
               </section>
 
               <section className="glassPanel identityPanel">
                 <div className="panelHeading">
                   <div>
                     <div className="eyebrow">TOŻSAMOŚĆ GCP</div>
-                    <h3>Połączenie z Google Cloud</h3>
+                    <h3>Application Default Credentials</h3>
                   </div>
                   <span className={status?.connected ? 'pill ok' : 'pill'}>{connectionLabel}</span>
                 </div>
                 <div className="identityRows">
                   <KeyValue label="Projekt" value={status?.projectId ?? 'UNKNOWN'} />
-                  <KeyValue label="Uwierzytelnianie" value={status?.connected ? 'ADC' : 'UNKNOWN'} />
+                  <KeyValue label="Principal" value={status?.principal ?? 'UNKNOWN'} />
                   <KeyValue label="Regiony Cloud Run" value={status?.regions.join(', ') || 'UNKNOWN'} />
-                  <KeyValue label="Aktualna rewizja Workspace" value={workspaceService?.latestReadyRevision ?? 'UNKNOWN'} />
+                  <KeyValue label="Rewizja Workspace" value={workspaceService?.latestReadyRevision ?? 'UNKNOWN'} />
                 </div>
               </section>
 
               <section className="projectSection">
                 <div className="sectionTitleRow">
                   <div>
-                    <div className="eyebrow">ZASOBY</div>
-                    <h3>Projekt GCP</h3>
+                    <div className="eyebrow">READ-ONLY CONTROL DESK</div>
+                    <h3>{status?.projectId ?? 'Projekt UNKNOWN'}</h3>
                   </div>
                   <button className="secondaryButton" onClick={() => void refresh()} disabled={loading}>{loading ? 'Odświeżanie…' : 'Odśwież dane'}</button>
                 </div>
@@ -248,11 +268,11 @@ export default function Home() {
                     <span>Google Cloud Project</span>
                   </div>
                   <div className="projectStats">
-                    <div><strong>{run.errors.length ? 'UNKNOWN' : run.services.length}</strong><span>Cloud Run</span></div>
+                    <div><strong>{inventory?.artifacts.length ?? 'UNKNOWN'}</strong><span>obrazy AR</span></div>
+                    <div><strong>{inventory ? services.length : 'UNKNOWN'}</strong><span>Cloud Run</span></div>
                     <div><strong>{vmError ? 'UNKNOWN' : vms.length}</strong><span>VM</span></div>
-                    <div><strong>{workspaceService?.region ?? 'UNKNOWN'}</strong><span>Workspace</span></div>
                   </div>
-                  <span className={status?.connected ? 'pill ok' : 'pill'}>{status?.connected ? 'AKTYWNY' : 'UNKNOWN'}</span>
+                  <span className="pill protected">TYLKO ODCZYT</span>
                 </article>
               </section>
 
@@ -260,17 +280,17 @@ export default function Home() {
                 <article className="glassPanel compactPanel">
                   <div className="compactIcon">⇧</div>
                   <div>
-                    <div className="eyebrow">OSTATNIA REWIZJA</div>
+                    <div className="eyebrow">LATEST READY REVISION</div>
                     <strong>{workspaceService?.latestReadyRevision ?? 'UNKNOWN'}</strong>
-                    <span>{workspaceService ? `${workspaceService.region} · Cloud Run` : 'Brak danych o usłudze Workspace'}</span>
+                    <span>{workspaceService ? `${workspaceService.region} · Cloud Run` : 'Brak potwierdzonego odczytu usługi'}</span>
                   </div>
                 </article>
                 <article className="glassPanel compactPanel">
                   <div className="compactIcon">⌁</div>
                   <div>
-                    <div className="eyebrow">PIPELINE</div>
-                    <strong>GitHub → Cloud Build → Artifact Registry → Cloud Run</strong>
-                    <span>Aktualny fundament wdrożeniowy</span>
+                    <div className="eyebrow">ŁAŃCUCH DOWODOWY</div>
+                    <strong>SHA → build ID → digest → rewizja → URL</strong>
+                    <span>Bez joinu po czasie</span>
                   </div>
                 </article>
               </section>
@@ -278,29 +298,27 @@ export default function Home() {
           )}
 
           {section === 'aplikacje' && (
-            <ResourcePanel eyebrow="CLOUD RUN API" title="Aplikacje" badge={run.errors.length ? 'UNKNOWN' : `${run.services.length} usług`}>
-              {run.errors.map((error) => <div className="alert" key={`${error.region}-${error.message}`}><strong>{error.region}:</strong> {error.message}</div>)}
-              {!run.errors.length && run.services.length === 0 && <p className="empty">API odpowiedziało poprawnie, ale nie znaleziono usług Cloud Run.</p>}
+            <ResourcePanel eyebrow="CLOUD RUN API V2" title="Aplikacje" badge={inventory ? `${services.length} usług` : 'UNKNOWN'}>
+              {inventoryError && <div className="alert"><strong>Deployment Inventory:</strong> {inventoryError}</div>}
+              {runErrors.map((error) => <InventoryAlert error={error} key={errorKey(error)} />)}
+              {inventory && services.length === 0 && <p className="empty">API odpowiedziało bez listy usług. Sprawdź skonfigurowane regiony.</p>}
               <div className="resourceRows">
-                {run.services.map((service) => {
-                  const protectedApr = service.name === 'agent-service';
-                  return (
-                    <article key={`${service.region}-${service.name}`} className="resourceRow">
-                      <div className="resourcePrimary">
-                        <div className="resourceIcon">⬡</div>
-                        <div>
-                          <strong>{service.name}</strong>
-                          <span>{service.region} · {service.latestReadyRevision ?? 'rewizja UNKNOWN'}</span>
-                        </div>
+                {services.map((service) => (
+                  <article key={`${service.region}-${service.name}`} className="resourceRow">
+                    <div className="resourcePrimary">
+                      <div className="resourceIcon">⬡</div>
+                      <div>
+                        <strong>{service.name}</strong>
+                        <span>{service.region} · {service.latestReadyRevision ?? 'rewizja UNKNOWN'}</span>
+                        <span className="monoLine">{service.revisionImage ?? 'image UNKNOWN'}</span>
                       </div>
-                      <div className="resourceActions">
-                        {protectedApr && <span className="pill protected">APR · TYLKO ODCZYT</span>}
-                        {!protectedApr && <span className={service.latestReadyRevision ? 'pill ok' : 'pill'}>{service.latestReadyRevision ? 'GOTOWY' : 'UNKNOWN'}</span>}
-                        {service.uri && !protectedApr ? <a href={service.uri} target="_blank" rel="noreferrer">URI ↗</a> : null}
-                      </div>
-                    </article>
-                  );
-                })}
+                    </div>
+                    <div className="resourceActions">
+                      <span className={service.latestReadyRevision ? 'pill ok' : 'pill'}>{service.latestReadyRevision ? 'READY' : 'UNKNOWN'}</span>
+                      {service.uri ? <a href={service.uri} target="_blank" rel="noreferrer">Endpoint ↗</a> : <span>URL UNKNOWN</span>}
+                    </div>
+                  </article>
+                ))}
               </div>
             </ResourcePanel>
           )}
@@ -316,50 +334,94 @@ export default function Home() {
                       <div className="resourceIcon">▣</div>
                       <div><strong>{vm.name}</strong><span>{vm.zone} · {vm.machineType}</span></div>
                     </div>
-                    <div className="resourceActions"><span className="pill">{vm.status}</span><span>{vm.externalIp ?? vm.internalIp ?? 'bez IP'}</span></div>
+                    <div className="resourceActions"><span className="pill">{vm.status}</span><span>{vm.externalIp ?? vm.internalIp ?? 'IP UNKNOWN'}</span></div>
                   </article>
                 ))}
               </div>
             </ResourcePanel>
           )}
 
-          {section === 'strony' && <TruthPanel title="Strony WWW" text="Moduł domen, hostingu i publicznych endpointów czeka na podłączenie do realnych API. Brak evidence = UNKNOWN." />}
+          {section === 'strony' && <TruthPanel title="Strony WWW" text="Moduł domen i hostingu nie jest podłączony do realnych API. Brak evidence = UNKNOWN." />}
+
           {section === 'wdrozenia' && (
-            <ResourcePanel eyebrow="CLOUD BUILD API" title="Wdrożenia" badge={buildError ? 'UNKNOWN' : `${builds.length} buildów`}>
-              {buildError && <div className="alert"><strong>Cloud Build API:</strong> {buildError}</div>}
-              <div className="identityRows">
-                <KeyValue label="Service" value="osa-cloud-workspace" />
-                <KeyValue label="Cloud Run LIVE revision" value={workspaceService?.latestReadyRevision ?? 'UNKNOWN'} />
-                <KeyValue label="Successful build linked to LIVE" value="UNKNOWN" />
-              </div>
-              {!buildError && builds.length === 0 && <p className="empty">API odpowiedziało poprawnie, ale nie znaleziono buildów dla osa-cloud-workspace.</p>}
+            <div className="dashboard">
+              <ResourcePanel
+                eyebrow="DETERMINISTYCZNY DEPLOYMENT INVENTORY"
+                title="GitHub → GCP"
+                badge={inventory ? `${verifiedDeployments}/${deployments.length} VERIFIED` : 'UNKNOWN'}
+              >
+                {inventoryError && <div className="alert"><strong>Deployment Inventory:</strong> {inventoryError}</div>}
+                {inventoryErrors.map((error) => <InventoryAlert error={error} key={errorKey(error)} />)}
+                {inventory && deployments.length === 0 && <p className="empty">Nie znaleziono usług Cloud Run możliwych do zmapowania. Provenance pozostaje UNKNOWN.</p>}
+                <div className="deploymentList">
+                  {deployments.map((deployment) => <DeploymentCard deployment={deployment} key={`${deployment.region}/${deployment.service}`} />)}
+                </div>
+              </ResourcePanel>
+
+              <ResourcePanel eyebrow="CLOUD BUILD API · GLOBAL" title="Build evidence" badge={inventory ? `${builds.length} buildów` : 'UNKNOWN'}>
+                {buildErrors.map((error) => <InventoryAlert error={error} key={errorKey(error)} />)}
+                {inventory && builds.length === 0 && <p className="empty">Cloud Build API nie zwróciło buildów z obrazami.</p>}
+                <div className="resourceRows">
+                  {builds.map((build) => (
+                    <article key={build.id} className="resourceRow buildRow">
+                      <div className="resourcePrimary">
+                        <div className="resourceIcon">⇧</div>
+                        <div>
+                          <strong>{build.serviceName ?? 'Service UNKNOWN'} · {build.id}</strong>
+                          <span>SHA: {build.commitSha ?? 'UNKNOWN'} · źródło: {build.commitShaOrigin}</span>
+                          <span>Utworzono: {formatBuildTime(build.createTime)}</span>
+                          <span className="monoLine">Digest: {build.resultImages[0]?.digest ?? 'UNKNOWN'}</span>
+                        </div>
+                      </div>
+                      <div className="resourceActions">
+                        <BuildStatusPill status={build.status} />
+                        {build.logUrl && <a href={build.logUrl} target="_blank" rel="noreferrer">Logi ↗</a>}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </ResourcePanel>
+            </div>
+          )}
+
+          {section === 'github' && (
+            <ResourcePanel eyebrow="SOURCE OF TRUTH" title="GitHub source" badge={inventory ? `${deployments.length} usług` : 'UNKNOWN'}>
+              <p className="empty compactEmpty">Link do commitu pojawia się wyłącznie wtedy, gdy SHA pochodzi z jawnych pól Cloud Build i build został jednoznacznie połączony z digestem live rewizji.</p>
               <div className="resourceRows">
-                {builds.map((build) => (
-                  <article key={build.id} className="resourceRow">
+                {deployments.map((deployment) => (
+                  <article className="resourceRow" key={`source-${deployment.region}-${deployment.service}`}>
                     <div className="resourcePrimary">
-                      <div className="resourceIcon">⇧</div>
+                      <div className="resourceIcon">⌁</div>
                       <div>
-                        <strong>Commit: {build.commitSha ?? 'UNKNOWN'}</strong>
-                        <span>Utworzono: {formatBuildTime(build.createTime)}</span>
-                        <span>Image: {build.image ?? 'UNKNOWN'}</span>
-                        {build.statusDetail && <span>Status detail: {build.statusDetail}</span>}
+                        <strong>{deployment.service}</strong>
+                        <span>SHA: {deployment.sourceSha ?? 'UNKNOWN'} · {deployment.sourceShaOrigin}</span>
                       </div>
                     </div>
                     <div className="resourceActions">
-                      <BuildStatusPill status={build.status} />
-                      {build.logUrl && <a href={build.logUrl} target="_blank" rel="noreferrer">Logi ↗</a>}
+                      <span className={deployment.sourceUrl ? 'pill ok' : 'pill'}>{deployment.sourceUrl ? 'LINKED' : 'UNKNOWN'}</span>
+                      {deployment.sourceUrl && <a href={deployment.sourceUrl} target="_blank" rel="noreferrer">Commit ↗</a>}
                     </div>
                   </article>
                 ))}
               </div>
             </ResourcePanel>
           )}
-          {section === 'github' && <TruthPanel title="GitHub → GCP" text="Pipeline działa: kod z repo buduje obraz, trafia do Artifact Registry i jest wdrażany do Cloud Run. Następny krok to widok historii i sterowanie wdrożeniami." />}
+
           {section === 'automatyzacje' && <TruthPanel title="Automatyzacje" text="Scheduler, Pub/Sub i Workflows nie są jeszcze podłączone do Workspace." />}
           {section === 'ai' && <TruthPanel title="AI" text="Warstwa Vertex AI / Gemini nie jest jeszcze podłączona do tego interfejsu." />}
-          {section === 'storage' && <TruthPanel title="Pamięć / Storage" text="Cloud Storage i warstwa pamięci aplikacji nie mają jeszcze adaptera inventory w Workspace." />}
+          {section === 'storage' && <TruthPanel title="Pamięć / Storage" text="Cloud Storage nie ma jeszcze adaptera inventory w Workspace." />}
           {section === 'koszty' && <TruthPanel title="Koszty" text="Billing API i budżety nie są jeszcze podłączone. Nie pokazujemy szacunków bez danych." />}
-          {section === 'advanced' && <TruthPanel title="Zaawansowane" text="Tu wejdą IAM, Secret Manager, Pub/Sub, Workflows, Artifact Registry, bazy danych, logi i pozostałe API. Funkcje będą odkrywane stopniowo bez ukrywania realnych możliwości GCP." />}
+          {section === 'advanced' && (
+            <ResourcePanel eyebrow="READ-ONLY API COVERAGE" title="Zaawansowane" badge={artifactErrors.length ? 'PARTIAL' : 'AKTYWNE'}>
+              {artifactErrors.map((error) => <InventoryAlert error={error} key={errorKey(error)} />)}
+              <div className="identityRows">
+                <KeyValue label="Artifact Registry images" value={inventory ? String(inventory.artifacts.length) : 'UNKNOWN'} />
+                <KeyValue label="Cloud Build scope" value={inventory?.scope.builds ?? 'UNKNOWN'} />
+                <KeyValue label="Cloud Run regions" value={inventory?.scope.regions.join(', ') || 'UNKNOWN'} />
+                <KeyValue label="Mutacje infrastruktury" value="WYŁĄCZONE" />
+              </div>
+            </ResourcePanel>
+          )}
         </div>
       </section>
     </main>
@@ -392,9 +454,7 @@ function BuildStatusPill({ status }: { status: string }) {
   const workingStatuses = new Set(['QUEUED', 'PENDING', 'WORKING']);
 
   if (status === 'SUCCESS') return <span className="pill ok">{status}</span>;
-  if (failureStatuses.has(status)) {
-    return <span className="pill" style={{ borderColor: '#6b3038', background: '#251015', color: '#e58b96' }}>{status}</span>;
-  }
+  if (failureStatuses.has(status)) return <span className="pill failed">{status}</span>;
   if (workingStatuses.has(status)) return <span className="pill protected">{status}</span>;
   return <span className="pill">{status || 'UNKNOWN'}</span>;
 }
@@ -417,5 +477,69 @@ function TruthPanel({ title, text }: { title: string; text: string }) {
       <div className="panelHeading"><div><div className="eyebrow">STATUS: NIEZAIMPLEMENTOWANE</div><h2 className="sectionHeading">{title}</h2></div><span className="pill">UNKNOWN</span></div>
       <p className="empty">{text}</p>
     </section>
+  );
+}
+
+function InventoryAlert({ error }: { error: InventoryError }) {
+  return (
+    <div className="alert">
+      <strong>{error.source} · {error.scope}{error.resource ? ` · ${error.resource}` : ''}:</strong> {error.message}
+    </div>
+  );
+}
+
+function errorKey(error: InventoryError): string {
+  return `${error.source}/${error.scope}/${error.resource ?? ''}/${error.message}`;
+}
+
+const reasonLabels: Record<ProvenanceReason, string> = {
+  NO_LATEST_READY_REVISION: 'brak latest ready revision',
+  NO_REVISION_IMAGE_DIGEST: 'rewizja nie ujawnia immutable digestu',
+  ARTIFACT_DIGEST_NOT_FOUND: 'digest niepotwierdzony w Artifact Registry',
+  BUILD_DIGEST_NOT_FOUND: 'brak Cloud Build z tym digestem',
+  BUILD_DIGEST_AMBIGUOUS: 'więcej niż jeden build pasuje do digestu',
+  SOURCE_SHA_MISSING: 'build nie ujawnia source SHA',
+  LIVE_URL_MISSING: 'brak live URL',
+};
+
+function DeploymentCard({ deployment }: { deployment: DeploymentInventoryItem }) {
+  return (
+    <article className="deploymentCard">
+      <div className="deploymentHeader">
+        <div>
+          <div className="eyebrow">{deployment.region}</div>
+          <h3>{deployment.service}</h3>
+        </div>
+        <span className={deployment.provenance === 'VERIFIED' ? 'pill ok' : 'pill'}>{deployment.provenance}</span>
+      </div>
+      <div className="provenanceChain">
+        <EvidenceCell label="GitHub SHA" value={deployment.sourceSha} href={deployment.sourceUrl} />
+        <EvidenceCell label="Cloud Build" value={deployment.buildId} href={deployment.buildLogUrl} />
+        <EvidenceCell label="AR digest" value={deployment.digest} />
+        <EvidenceCell label="Cloud Run revision" value={deployment.revision} />
+        <EvidenceCell label="Live endpoint" value={deployment.url} href={deployment.url} />
+      </div>
+      <div className="artifactEvidence">
+        <span>Artifact Registry</span>
+        <strong>{deployment.artifactUri ?? 'UNKNOWN'}</strong>
+      </div>
+      {deployment.reasons.length > 0 && (
+        <div className="unknownReasons">
+          {deployment.reasons.map((reason) => <span key={reason}>UNKNOWN · {reasonLabels[reason]}</span>)}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function EvidenceCell({ label, value, href }: { label: string; value: string | null; href?: string | null }) {
+  const content = value ?? 'UNKNOWN';
+  return (
+    <div className={value ? 'evidenceCell verified' : 'evidenceCell'}>
+      <span>{label}</span>
+      {href && value
+        ? <a href={href} target="_blank" rel="noreferrer">{content} ↗</a>
+        : <strong>{content}</strong>}
+    </div>
   );
 }

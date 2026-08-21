@@ -10,3 +10,5 @@ coverage
 *.key
 service-account*.json
 application_default_credentials.json
+next-env.d.ts
+tsconfig.tsbuildinfo
