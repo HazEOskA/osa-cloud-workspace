@@ -21,8 +21,9 @@ steps:
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--service-account=${_RUNTIME_SERVICE_ACCOUNT}'
+      - '--revision-suffix=$BUILD_ID'
+      - '--no-traffic'
       - '--update-env-vars=^@^GCP_PROJECT_ID=$PROJECT_ID@GCP_REGIONS=${_GCP_REGIONS}'
-      - '--no-invoker-iam-check'
       - '--quiet'
 
 images:

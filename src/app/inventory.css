@@ -1,0 +1,6 @@
+.serviceCard,
+.resourceDisclosure,
+.artifactRow {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 86px;
+}

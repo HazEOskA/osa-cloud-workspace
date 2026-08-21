@@ -13,7 +13,6 @@ export async function GET() {
       {
         builds: [],
         scope: 'global',
-        service: 'osa-cloud-workspace',
         error: error instanceof Error ? error.message : 'Nieznany błąd Cloud Build API.',
       },
       { status: 503 },

@@ -4,8 +4,8 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${REGION:-europe-west1}"
 AR_REPO="${AR_REPO:-osa-cloud-workspace}"
-RUNTIME_SA_NAME="${RUNTIME_SA_NAME:-osa-cloud-workspace-runtime}"
-BUILD_SA_NAME="${BUILD_SA_NAME:-osa-cloud-workspace-build}"
+RUNTIME_SA_NAME="${RUNTIME_SA_NAME:-osa-cloud-workspace}"
+BUILD_SA_NAME="${BUILD_SA_NAME:-osa-cloud-build}"
 
 if [[ -z "${PROJECT_ID}" || "${PROJECT_ID}" == "(unset)" ]]; then
   echo "Brak PROJECT_ID. Ustaw: export PROJECT_ID=twoj-project-id"
@@ -44,7 +44,7 @@ if ! gcloud iam service-accounts describe "${BUILD_SA}" >/dev/null 2>&1; then
     --display-name="OSA Cloud Workspace build"
 fi
 
-for ROLE in roles/compute.viewer roles/run.viewer; do
+for ROLE in roles/compute.viewer roles/run.viewer roles/cloudbuild.builds.viewer roles/artifactregistry.reader; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${RUNTIME_SA}" \
     --role="${ROLE}" \
