@@ -15,12 +15,18 @@ type GitHubRepo = {
 };
 
 export async function GET() {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  const endpoint = token
+    ? 'https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner'
+    : `https://api.github.com/users/${OWNER}/repos?per_page=100&sort=updated`;
+
   try {
-    const response = await fetch(`https://api.github.com/users/${OWNER}/repos?per_page=100&sort=updated`, {
+    const response = await fetch(endpoint, {
       cache: 'no-store',
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'OSA-Cloud-Workspace',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
 
@@ -30,21 +36,29 @@ export async function GET() {
 
     const data = (await response.json()) as GitHubRepo[];
     const repos = data
-      .filter((repo) => !repo.private && !repo.archived)
+      .filter((repo) => !repo.archived)
+      .filter((repo) => token || !repo.private)
       .map((repo) => ({
         name: repo.name,
         cloneUrl: repo.clone_url,
         defaultBranch: repo.default_branch,
+        private: repo.private,
         fork: repo.fork,
       }));
 
-    return NextResponse.json({ owner: OWNER, repos, scope: 'public' });
+    return NextResponse.json({
+      owner: OWNER,
+      repos,
+      scope: token ? 'authenticated' : 'public',
+      authenticated: Boolean(token),
+    });
   } catch (error) {
     return NextResponse.json(
       {
         owner: OWNER,
         repos: [],
-        scope: 'public',
+        scope: token ? 'authenticated' : 'public',
+        authenticated: Boolean(token),
         error: error instanceof Error ? error.message : 'Nieznany błąd GitHub API.',
       },
       { status: 503 },
