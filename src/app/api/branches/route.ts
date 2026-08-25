@@ -14,6 +14,7 @@ type GitHubBranch = {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const repo = url.searchParams.get('repo')?.trim() ?? '';
+  const token = process.env.GITHUB_TOKEN?.trim();
 
   if (!REPO_NAME.test(repo)) {
     return NextResponse.json({ error: 'Nieprawidłowa nazwa repozytorium.' }, { status: 400 });
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
       headers: {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'OSA-Cloud-Workspace',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
     });
 
@@ -36,14 +38,21 @@ export async function GET(request: Request) {
       .filter((branch) => Boolean(branch.name))
       .map((branch) => ({ name: branch.name, protected: branch.protected }));
 
-    return NextResponse.json({ owner: OWNER, repo, branches, scope: 'public' });
+    return NextResponse.json({
+      owner: OWNER,
+      repo,
+      branches,
+      scope: token ? 'authenticated' : 'public',
+      authenticated: Boolean(token),
+    });
   } catch (error) {
     return NextResponse.json(
       {
         owner: OWNER,
         repo,
         branches: [],
-        scope: 'public',
+        scope: token ? 'authenticated' : 'public',
+        authenticated: Boolean(token),
         error: error instanceof Error ? error.message : 'Nieznany błąd GitHub API.',
       },
       { status: 503 },
