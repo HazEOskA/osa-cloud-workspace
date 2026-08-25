@@ -1,25 +1,14 @@
-import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { submitPublicRepoDeploy, type RepoDeployRequest } from '@/lib/deploy';
+import { submitRepoDeploy, type RepoDeployRequest } from '@/lib/deploy';
+import { requireAdminIdentity } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function tokenMatches(provided: string, expected: string): boolean {
-  const left = Buffer.from(provided);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 export async function POST(request: Request) {
-  const expectedToken = process.env.OSA_ADMIN_TOKEN?.trim();
-  if (!expectedToken) {
-    return NextResponse.json({ error: 'OSA_ADMIN_TOKEN nie jest skonfigurowany w Cloud Run.' }, { status: 503 });
-  }
-
-  const providedToken = request.headers.get('x-osa-admin-token') ?? '';
-  if (!tokenMatches(providedToken, expectedToken)) {
-    return NextResponse.json({ error: 'Brak autoryzacji do uruchomienia deployu.' }, { status: 401 });
+  const auth = await requireAdminIdentity(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   try {
@@ -28,13 +17,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Wymagane: repo, branch, serviceName.' }, { status: 400 });
     }
 
-    const result = await submitPublicRepoDeploy({
+    const result = await submitRepoDeploy({
       repo: body.repo,
       branch: body.branch,
       serviceName: body.serviceName,
     });
 
-    return NextResponse.json(result, { status: 202 });
+    return NextResponse.json({ ...result, actor: auth.email }, { status: 202 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Nieznany błąd uruchamiania deployu.' },
