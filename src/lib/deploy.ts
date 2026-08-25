@@ -8,6 +8,7 @@ const REGION = 'europe-west1';
 const AR_REPOSITORY = 'osa-cloud-workspace';
 const BUILD_SERVICE_ACCOUNT = 'osa-cloud-build';
 const RUNTIME_SERVICE_ACCOUNT = 'osa-cloud-workspace';
+const DEFAULT_GITHUB_SECRET = 'osa-github-token';
 
 const REPO_NAME = /^[A-Za-z0-9_.-]+$/;
 const BRANCH_NAME = /^[A-Za-z0-9._/-]+$/;
@@ -24,6 +25,11 @@ type BuildOperation = {
   };
 };
 
+type GitHubRepo = {
+  private: boolean;
+  clone_url: string;
+};
+
 export type RepoDeployRequest = {
   repo: string;
   branch: string;
@@ -38,6 +44,7 @@ export type RepoDeployResult = {
   logUrl: string | null;
   repoUrl: string;
   serviceName: string;
+  privateRepo: boolean;
 };
 
 async function resolveProjectId(): Promise<string> {
@@ -49,7 +56,28 @@ async function resolveProjectId(): Promise<string> {
   return detectedProject;
 }
 
-export async function submitPublicRepoDeploy(input: RepoDeployRequest): Promise<RepoDeployResult> {
+async function resolveRepo(repo: string): Promise<GitHubRepo> {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  const response = await fetch(`https://api.github.com/repos/${OWNER}/${encodeURIComponent(repo)}`, {
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'OSA-Cloud-Workspace',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 404 && !token) {
+      throw new Error('Repo jest prywatne albo niedostępne. Skonfiguruj serwerowy GITHUB_TOKEN.');
+    }
+    throw new Error(`GitHub repo lookup HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as GitHubRepo;
+}
+
+export async function submitRepoDeploy(input: RepoDeployRequest): Promise<RepoDeployResult> {
   const repo = input.repo.trim();
   const branch = input.branch.trim();
   const serviceName = input.serviceName.trim();
@@ -61,17 +89,30 @@ export async function submitPublicRepoDeploy(input: RepoDeployRequest): Promise<
   }
 
   const projectId = await resolveProjectId();
-  const repoUrl = `https://github.com/${OWNER}/${repo}.git`;
+  const repoInfo = await resolveRepo(repo);
+  const repoUrl = repoInfo.clone_url || `https://github.com/${OWNER}/${repo}.git`;
   const image = `${REGION}-docker.pkg.dev/${projectId}/${AR_REPOSITORY}/${serviceName}:$BUILD_ID`;
   const buildServiceAccount = `projects/${projectId}/serviceAccounts/${BUILD_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`;
   const runtimeServiceAccount = `${RUNTIME_SERVICE_ACCOUNT}@${projectId}.iam.gserviceaccount.com`;
 
-  const build = {
-    steps: [
-      {
+  const cloneStep = repoInfo.private
+    ? {
+        name: 'gcr.io/cloud-builders/git',
+        entrypoint: 'bash',
+        secretEnv: ['GITHUB_TOKEN'],
+        args: [
+          '-ceu',
+          `git -c http.extraHeader="Authorization: Bearer $$GITHUB_TOKEN" clone --depth=1 --branch ${JSON.stringify(branch)} ${JSON.stringify(repoUrl)} /workspace/source`,
+        ],
+      }
+    : {
         name: 'gcr.io/cloud-builders/git',
         args: ['clone', '--depth=1', '--branch', branch, repoUrl, '/workspace/source'],
-      },
+      };
+
+  const build: Record<string, unknown> = {
+    steps: [
+      cloneStep,
       {
         name: 'gcr.io/cloud-builders/docker',
         args: ['build', '-t', image, '/workspace/source'],
@@ -104,6 +145,18 @@ export async function submitPublicRepoDeploy(input: RepoDeployRequest): Promise<
     },
   };
 
+  if (repoInfo.private) {
+    const secretName = process.env.GITHUB_TOKEN_SECRET?.trim() || DEFAULT_GITHUB_SECRET;
+    build.availableSecrets = {
+      secretManager: [
+        {
+          versionName: `projects/${projectId}/secrets/${secretName}/versions/latest`,
+          env: 'GITHUB_TOKEN',
+        },
+      ],
+    };
+  }
+
   const client = await auth.getClient();
   const response = await client.request<BuildOperation>({
     url: `https://cloudbuild.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/builds`,
@@ -122,5 +175,6 @@ export async function submitPublicRepoDeploy(input: RepoDeployRequest): Promise<
     logUrl: createdBuild?.logUrl ?? null,
     repoUrl,
     serviceName,
+    privateRepo: repoInfo.private,
   };
 }
