@@ -77,3 +77,5 @@ Docelowo zawęzimy role dokładniej po pierwszym discovery.
 ## Status
 
 `v0.1-foundation` — repo i backend integration layer są budowane.
+
+2026-08-25: ręczny `OSA_ADMIN_TOKEN` został usunięty z flow deployu; aktualny `main` używa Google Identity i nie wymaga wklejania tokenu administracyjnego.
