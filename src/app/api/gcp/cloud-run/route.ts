@@ -12,7 +12,12 @@ export async function GET() {
     return NextResponse.json(
       {
         services: [],
-        errors: [{ region: 'UNKNOWN', message: error instanceof Error ? error.message : 'Nieznany błąd Cloud Run API.' }],
+        errors: [{
+          source: 'cloud-run-service',
+          scope: 'UNKNOWN',
+          resource: null,
+          message: error instanceof Error ? error.message : 'Nieznany błąd Cloud Run API.',
+        }],
       },
       { status: 503 },
     );
