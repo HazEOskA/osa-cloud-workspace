@@ -4,7 +4,7 @@
 
 ### One Control Plane for the whole OSA stack
 
-<img src="docs/assets/osa-workspace-hero.jpg" alt="OSA Cloud Workspace — bees building on Google Cloud" width="100%" />
+<img src="docs/assets/osa-workspace-hero.svg" alt="OSA Cloud Workspace — one control plane for Google Cloud" width="100%" />
 
 <br />
 
