@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720" role="img" aria-labelledby="title desc">
+  <title id="title">OSA Cloud Workspace</title>
+  <desc id="desc">One control plane for agents, automation, builds, deploys and Google Cloud infrastructure.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07090f"/>
+      <stop offset="0.55" stop-color="#0b0d16"/>
+      <stop offset="1" stop-color="#111024"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9a7cff"/>
+      <stop offset="0.5" stop-color="#b59cff"/>
+      <stop offset="1" stop-color="#7b61ff"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4f3d98" stop-opacity="0.15"/>
+      <stop offset="0.5" stop-color="#a78bfa" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#4f3d98" stop-opacity="0.15"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#9d87ff" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#9d87ff" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#8e79ff" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="720" rx="28" fill="url(#bg)"/>
+  <rect width="1600" height="720" rx="28" fill="url(#grid)"/>
+  <circle cx="1325" cy="160" r="330" fill="url(#orb)"/>
+  <circle cx="250" cy="700" r="260" fill="url(#orb)"/>
+
+  <g opacity="0.85">
+    <path d="M1145 52h340" stroke="#8f7bff" stroke-opacity="0.22"/>
+    <path d="M70 668h450" stroke="#8f7bff" stroke-opacity="0.18"/>
+  </g>
+
+  <!-- brand mark -->
+  <g transform="translate(74 68)">
+    <rect width="58" height="58" rx="16" fill="#11131d" stroke="#9d87ff" stroke-opacity="0.55"/>
+    <circle cx="29" cy="29" r="8" fill="#f5f3ff"/>
+    <circle cx="29" cy="29" r="17" fill="none" stroke="#9d87ff" stroke-opacity="0.5"/>
+    <circle cx="29" cy="29" r="25" fill="none" stroke="#9d87ff" stroke-opacity="0.18"/>
+  </g>
+
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="150" y="92" fill="#f4f2ff" font-size="24" font-weight="800" letter-spacing="2">OSA CLOUD</text>
+    <text x="150" y="119" fill="#7f8191" font-size="13" font-weight="700" letter-spacing="3">WORKSPACE / V2</text>
+
+    <!-- top chips -->
+    <g transform="translate(1085 76)" font-size="12" font-weight="700" letter-spacing="1.4">
+      <rect x="0" y="0" width="126" height="36" rx="18" fill="#11131c" stroke="#333746"/>
+      <text x="63" y="23" fill="#b9bbc6" text-anchor="middle">CONTROL PLANE</text>
+      <rect x="140" y="0" width="122" height="36" rx="18" fill="#141225" stroke="#6d5ac4"/>
+      <text x="201" y="23" fill="#b9a8ff" text-anchor="middle">GOOGLE CLOUD</text>
+      <rect x="276" y="0" width="72" height="36" rx="18" fill="#101923" stroke="#2e6f66"/>
+      <circle cx="296" cy="18" r="5" fill="#63e6be"/>
+      <text x="322" y="23" fill="#90e6cf" text-anchor="middle">V2</text>
+    </g>
+
+    <!-- hero -->
+    <text x="78" y="248" fill="#8e7cff" font-size="18" font-weight="800" letter-spacing="3.2">ONE CONTROL PLANE FOR THE WHOLE OSA STACK</text>
+    <text x="76" y="330" fill="#f6f5fb" font-size="72" font-weight="900" letter-spacing="-2">OSA CLOUD WORKSPACE</text>
+    <text x="78" y="384" fill="#a9abb8" font-size="24" font-weight="500">Build. Test. Deploy. Verify. From one place.</text>
+
+    <!-- evidence rail -->
+    <g transform="translate(78 432)">
+      <rect x="0" y="0" width="560" height="52" rx="14" fill="#0e1018" stroke="#252938"/>
+      <circle cx="28" cy="26" r="6" fill="#a78bfa"/>
+      <text x="48" y="32" fill="#d6d2e8" font-size="16" font-weight="700" letter-spacing="1.4">CLAIM</text>
+      <text x="132" y="32" fill="#676b7d" font-size="20">→</text>
+      <circle cx="166" cy="26" r="6" fill="#c4b5fd"/>
+      <text x="186" y="32" fill="#d6d2e8" font-size="16" font-weight="700" letter-spacing="1.4">EVIDENCE</text>
+      <text x="294" y="32" fill="#676b7d" font-size="20">→</text>
+      <circle cx="328" cy="26" r="6" fill="#63e6be"/>
+      <text x="348" y="32" fill="#d6d2e8" font-size="16" font-weight="700" letter-spacing="1.4">ACTION</text>
+      <rect x="442" y="10" width="102" height="32" rx="10" fill="#111827" stroke="#274a44"/>
+      <text x="493" y="31" fill="#6ee7c5" font-size="12" font-weight="800" text-anchor="middle" letter-spacing="1">NO FAKE GREEN</text>
+    </g>
+
+    <!-- pipeline -->
+    <g transform="translate(78 548)">
+      <text x="0" y="0" fill="#7f8191" font-size="12" font-weight="800" letter-spacing="2.2">SOURCE → BUILD → IMAGE → RUNTIME</text>
+
+      <g transform="translate(0 26)">
+        <rect width="240" height="80" rx="16" fill="#0d0f17" stroke="#2a2d3a"/>
+        <circle cx="32" cy="40" r="12" fill="#171923" stroke="#767989"/>
+        <path d="M27 40h10M32 35v10" stroke="#c9cad2" stroke-width="2"/>
+        <text x="58" y="35" fill="#f1f0f7" font-size="16" font-weight="800">GITHUB</text>
+        <text x="58" y="57" fill="#737789" font-size="12">repo · branch · SHA</text>
+      </g>
+
+      <path d="M240 92H306" stroke="url(#line)" stroke-width="2"/>
+      <path d="m298 86 10 6-10 6" fill="none" stroke="#8f7bff" stroke-width="2"/>
+
+      <g transform="translate(306 26)">
+        <rect width="240" height="80" rx="16" fill="#0d0f17" stroke="#2a2d3a"/>
+        <circle cx="32" cy="40" r="12" fill="#171923" stroke="#8b78f5"/>
+        <path d="M25 42h14M28 36h8M30 48h4" stroke="#b4a5ff" stroke-width="2"/>
+        <text x="58" y="35" fill="#f1f0f7" font-size="16" font-weight="800">CLOUD BUILD</text>
+        <text x="58" y="57" fill="#737789" font-size="12">build ID · verification</text>
+      </g>
+
+      <path d="M546 92H612" stroke="url(#line)" stroke-width="2"/>
+      <path d="m604 86 10 6-10 6" fill="none" stroke="#8f7bff" stroke-width="2"/>
+
+      <g transform="translate(612 26)">
+        <rect width="240" height="80" rx="16" fill="#0d0f17" stroke="#2a2d3a"/>
+        <circle cx="32" cy="40" r="12" fill="#171923" stroke="#8b78f5"/>
+        <path d="m24 36 8-5 8 5-8 5-8-5Zm0 8 8 5 8-5" fill="none" stroke="#b4a5ff" stroke-width="2"/>
+        <text x="58" y="35" fill="#f1f0f7" font-size="16" font-weight="800">ARTIFACT</text>
+        <text x="58" y="57" fill="#737789" font-size="12">image · digest</text>
+      </g>
+
+      <path d="M852 92H918" stroke="url(#line)" stroke-width="2"/>
+      <path d="m910 86 10 6-10 6" fill="none" stroke="#8f7bff" stroke-width="2"/>
+
+      <g transform="translate(918 26)">
+        <rect width="240" height="80" rx="16" fill="#0d0f17" stroke="#2a2d3a"/>
+        <circle cx="32" cy="40" r="12" fill="#0f1b19" stroke="#3f8f80"/>
+        <circle cx="32" cy="40" r="4" fill="#63e6be"/>
+        <text x="58" y="35" fill="#f1f0f7" font-size="16" font-weight="800">CLOUD RUN</text>
+        <text x="58" y="57" fill="#737789" font-size="12">revision · live URL</text>
+      </g>
+    </g>
+
+    <!-- right-side module stack -->
+    <g transform="translate(1282 210)">
+      <rect width="238" height="332" rx="24" fill="#0c0e16" stroke="#29263f"/>
+      <text x="28" y="44" fill="#8f82c7" font-size="11" font-weight="800" letter-spacing="2">WORKSPACE MODULES</text>
+      <g font-size="15" font-weight="700">
+        <text x="28" y="84" fill="#e9e7f4">AGENTS</text><circle cx="203" cy="79" r="5" fill="#63e6be"/>
+        <text x="28" y="122" fill="#e9e7f4">AUTOMATIONS</text><circle cx="203" cy="117" r="5" fill="#a78bfa"/>
+        <text x="28" y="160" fill="#e9e7f4">PROJECTS</text><circle cx="203" cy="155" r="5" fill="#a78bfa"/>
+        <text x="28" y="198" fill="#e9e7f4">DEV TOOLS</text><circle cx="203" cy="193" r="5" fill="#a78bfa"/>
+        <text x="28" y="236" fill="#e9e7f4">TEST LAB</text><circle cx="203" cy="231" r="5" fill="#a78bfa"/>
+        <text x="28" y="274" fill="#e9e7f4">DEPLOY</text><circle cx="203" cy="269" r="5" fill="#a78bfa"/>
+        <text x="28" y="312" fill="#e9e7f4">INFRA + COSTS</text><circle cx="203" cy="307" r="5" fill="#a78bfa"/>
+      </g>
+    </g>
+  </g>
+
+  <rect x="1" y="1" width="1598" height="718" rx="27" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+</svg>
