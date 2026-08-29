@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractCloudAssistOutput, makeReadOnlyQuery, parseMcpPayload } from './cloud-assist';
+import { extractCloudAssistOutput, makeReadOnlyQuery, parseMcpPayload } from './cloud-assist.ts';
 
 test('parseMcpPayload parses JSON responses', () => {
   const envelope = parseMcpPayload(JSON.stringify({
