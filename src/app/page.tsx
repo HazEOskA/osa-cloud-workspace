@@ -31,6 +31,7 @@ type GoogleIdentityWindow = Window & {
 };
 
 const CLOUD_CONTEXT_KEY = 'osa-cloud-architect-context-v01';
+const CLOUD_ID_TOKEN_KEY = 'osa-cloud-architect-id-token-v01';
 const cloudQuickPrompts = [
   'Sprawdź stan Cloud Run i wskaż najważniejszy problem.',
   'Zrób read-only audyt projektu i pokaż evidence.',
@@ -59,7 +60,7 @@ const toolDefs: Array<{ label: string; icon: IconName; path: (p: string) => stri
   { label: 'Compute Engine', icon: 'server', path: (p) => `https://console.cloud.google.com/compute/instances?project=${p}`, note: 'VM i VPS' },
   { label: 'Monitoring', icon: 'activity', path: (p) => `https://console.cloud.google.com/monitoring?project=${p}`, note: 'metryki i alerty' },
   { label: 'Cloud Scheduler', icon: 'zap', path: (p) => `https://console.cloud.google.com/cloudscheduler?project=${p}`, note: 'harmonogramy' },
-  { label: 'Cloud SQL', icon: 'database', path: (p) => `https://console.cloud.google.com/sql/instances?project=${p}`, note: 'bazy danych' },
+  { label: 'Cloud SQL', icon: 'database', path: (p) => `https://console.cloud.google.com/sql/instances?project=${p}`, note: 'bazy danych i architektura danych' },
   { label: 'IAM', icon: 'lock', path: (p) => `https://console.cloud.google.com/iam-admin/iam?project=${p}`, note: 'tożsamości i role' },
 ];
 
@@ -97,6 +98,8 @@ function CloudArchitectDock({ projectId }: { projectId: string }) {
         setAuthConfig((await authResponse.json()) as CloudAuthConfig);
         setStatus((await statusResponse.json()) as CloudArchitectStatus);
         setContextId(window.sessionStorage.getItem(CLOUD_CONTEXT_KEY));
+        const savedToken = window.sessionStorage.getItem(CLOUD_ID_TOKEN_KEY);
+        if (savedToken) setIdToken(savedToken);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       }
@@ -113,6 +116,7 @@ function CloudArchitectDock({ projectId }: { projectId: string }) {
         client_id: authConfig.clientId,
         callback: (response) => {
           if (!response.credential) return;
+          window.sessionStorage.setItem(CLOUD_ID_TOKEN_KEY, response.credential);
           setIdToken(response.credential);
           setError(null);
         },
@@ -168,6 +172,10 @@ function CloudArchitectDock({ projectId }: { projectId: string }) {
       const data = (await response.json()) as CloudArchitectResponse;
 
       if (!response.ok || !data.content) {
+        if (response.status === 401) {
+          window.sessionStorage.removeItem(CLOUD_ID_TOKEN_KEY);
+          setIdToken('');
+        }
         if (data.code === 'CLOUD_ASSIST_ACCESS_BLOCKED') setLiveAccess('BLOCKED');
         throw new Error(data.error ?? `HTTP ${response.status}`);
       }
