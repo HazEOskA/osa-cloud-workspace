@@ -247,7 +247,12 @@ export default function ArchitectPage() {
           </div>
 
           <div>
-            {error && <div className={styles.error}>{error}</div>}
+            {error && (
+              <details className={styles.error}>
+                <summary>{liveAccess === 'BLOCKED' ? 'Cloud Assist access: BLOCKED' : 'Cloud Assist request failed'}</summary>
+                <pre>{error}</pre>
+              </details>
+            )}
             <div className={styles.composer}>
               <textarea
                 value={input}

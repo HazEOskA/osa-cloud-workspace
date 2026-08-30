@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import architectStyles from './architect/architect.module.css';
 
 type View = 'overview' | 'agents' | 'automations' | 'projects' | 'devtools' | 'testlab' | 'deploy' | 'infra' | 'costs';
 type IconName = 'grid' | 'bot' | 'zap' | 'layers' | 'code' | 'flask' | 'rocket' | 'server' | 'wallet' | 'refresh' | 'external' | 'activity' | 'cloud' | 'terminal' | 'database' | 'lock' | 'github' | 'logs' | 'monitor' | 'check' | 'alert';
@@ -14,6 +15,26 @@ type Build = { id: string; status: string; createTime: string | null; finishTime
 type Deployment = { service: string; region: string; sourceSha: string | null; sourceUrl: string | null; buildId: string | null; buildStatus: string | null; buildLogUrl: string | null; digest: string | null; revision: string | null; url: string | null; provenance: 'VERIFIED' | 'UNKNOWN'; reasons: string[] };
 type Inventory = { deployments: Deployment[]; services: Service[]; builds: Build[]; artifacts: Array<{ uri: string; digest: string }>; errors: Array<{ source: string; message: string }>; scope: { builds: 'global'; regions: string[] } };
 type Probe = { state: 'idle' | 'running' | 'pass' | 'fail'; status?: number; latency?: number; message?: string };
+type CloudMessage = { id: string; role: 'user' | 'assistant'; content: string };
+type CloudAuthConfig = { configured: boolean; clientId: string | null };
+type CloudArchitectStatus = { bridge: 'READY' | 'PARTIAL'; projectId: string | null };
+type CloudArchitectResponse = { content?: string; contextId?: string | null; error?: string; code?: string };
+type GoogleIdentityWindow = Window & {
+  google?: {
+    accounts: {
+      id: {
+        initialize(input: { client_id: string; callback: (response: { credential?: string }) => void }): void;
+        renderButton(parent: HTMLElement, options: Record<string, string>): void;
+      };
+    };
+  };
+};
+
+const CLOUD_CONTEXT_KEY = 'osa-cloud-architect-context-v01';
+const cloudQuickPrompts = [
+  'Sprawdź stan Cloud Run i wskaż najważniejszy problem.',
+  'Zrób read-only audyt projektu i pokaż evidence.',
+];
 
 const nav: Array<{ id: View; label: string; icon: IconName }> = [
   { id: 'overview', label: 'Command', icon: 'grid' },
@@ -52,6 +73,188 @@ async function readJson<T>(url: string): Promise<T> {
 function norm(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
 function short(value: string | null | undefined, n = 9) { return value ? value.slice(0, n) : 'UNKNOWN'; }
 function consoleProject(projectId: string | null) { return projectId ?? 'fluid-fiber-477010-a8'; }
+
+function CloudArchitectDock({ projectId }: { projectId: string }) {
+  const [authConfig, setAuthConfig] = useState<CloudAuthConfig | null>(null);
+  const [status, setStatus] = useState<CloudArchitectStatus | null>(null);
+  const [idToken, setIdToken] = useState('');
+  const [contextId, setContextId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<CloudMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [liveAccess, setLiveAccess] = useState<'UNKNOWN' | 'VERIFIED' | 'BLOCKED'>('UNKNOWN');
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [authResponse, statusResponse] = await Promise.all([
+          fetch('/api/auth/config', { cache: 'no-store' }),
+          fetch('/api/cloud-architect', { cache: 'no-store' }),
+        ]);
+        setAuthConfig((await authResponse.json()) as CloudAuthConfig);
+        setStatus((await statusResponse.json()) as CloudArchitectStatus);
+        setContextId(window.sessionStorage.getItem(CLOUD_CONTEXT_KEY));
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!authConfig?.configured || !authConfig.clientId || idToken) return;
+
+    const mountButton = () => {
+      const google = (window as GoogleIdentityWindow).google;
+      if (!google || !googleButtonRef.current || !authConfig.clientId) return;
+      google.accounts.id.initialize({
+        client_id: authConfig.clientId,
+        callback: (response) => {
+          if (!response.credential) return;
+          setIdToken(response.credential);
+          setError(null);
+        },
+      });
+      googleButtonRef.current.innerHTML = '';
+      google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'filled_black',
+        size: 'medium',
+        text: 'signin_with',
+        shape: 'pill',
+      });
+    };
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-osa-google-identity]');
+    if (existing) {
+      if ((window as GoogleIdentityWindow).google) mountButton();
+      else existing.addEventListener('load', mountButton, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.osaGoogleIdentity = 'true';
+    script.addEventListener('load', mountButton, { once: true });
+    document.head.appendChild(script);
+  }, [authConfig, idToken]);
+
+  useEffect(() => {
+    messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, sending]);
+
+  async function send() {
+    const userQuery = input.trim();
+    if (!userQuery || sending) return;
+    if (!idToken) {
+      setError('Zaloguj się kontem Google administratora, aby rozmawiać z Cloud Architect.');
+      return;
+    }
+
+    setMessages((current) => [...current, { id: `u-${Date.now()}`, role: 'user', content: userQuery }]);
+    setInput('');
+    setSending(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/cloud-architect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ userQuery, contextId }),
+      });
+      const data = (await response.json()) as CloudArchitectResponse;
+
+      if (!response.ok || !data.content) {
+        if (data.code === 'CLOUD_ASSIST_ACCESS_BLOCKED') setLiveAccess('BLOCKED');
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
+
+      setLiveAccess('VERIFIED');
+      const nextContext = data.contextId ?? null;
+      setContextId(nextContext);
+      if (nextContext) window.sessionStorage.setItem(CLOUD_CONTEXT_KEY, nextContext);
+      else window.sessionStorage.removeItem(CLOUD_CONTEXT_KEY);
+      setMessages((current) => [...current, { id: `a-${Date.now()}`, role: 'assistant', content: data.content ?? '' }]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className={architectStyles.dock} aria-label="Cloud Architect chat">
+      <div className={architectStyles.dockHeader}>
+        <div>
+          <span className={architectStyles.kicker}>GEMINI CLOUD ASSIST // PROJECT-AWARE CHAT</span>
+          <h2>Cloud Architect</h2>
+          <p>Pytaj o ten projekt. Pod odpowiedziami zostaje live sterownia i evidence.</p>
+        </div>
+        <div className={architectStyles.dockStatus}>
+          <span>{status?.projectId ?? projectId}</span>
+          <b className={status?.bridge === 'READY' ? architectStyles.good : architectStyles.warn}>{status?.bridge ?? 'SYNC'}</b>
+          <b className={liveAccess === 'VERIFIED' ? architectStyles.good : liveAccess === 'BLOCKED' ? architectStyles.warn : ''}>{liveAccess}</b>
+          <a href="/architect">FULL</a>
+        </div>
+      </div>
+
+      <div className={architectStyles.dockMessages} ref={messagesRef}>
+        {messages.length === 0 && !sending && (
+          <div className={architectStyles.dockEmpty}>
+            <strong>Co sprawdzamy w chmurze?</strong>
+            <span>Chat jest pierwszy. Control plane i realne dane projektu są bezpośrednio pod nim.</span>
+            <div className={architectStyles.dockQuick}>
+              {cloudQuickPrompts.map((prompt) => <button key={prompt} className={architectStyles.button} onClick={() => setInput(prompt)}>{prompt}</button>)}
+            </div>
+          </div>
+        )}
+        {messages.map((message) => (
+          <article key={message.id} className={`${architectStyles.message} ${message.role === 'user' ? architectStyles.user : architectStyles.assistant}`}>
+            <div className={architectStyles.role}>{message.role === 'user' ? 'OPERATOR' : 'CLOUD ARCHITECT'}</div>
+            <div className={architectStyles.content}>{message.content}</div>
+          </article>
+        ))}
+        {sending && (
+          <article className={`${architectStyles.message} ${architectStyles.assistant}`}>
+            <div className={architectStyles.role}>CLOUD ARCHITECT</div>
+            <div className={architectStyles.content}>Analizuję projekt i dostępne evidence…</div>
+          </article>
+        )}
+      </div>
+
+      <div className={architectStyles.dockComposer}>
+        <textarea
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+              event.preventDefault();
+              void send();
+            }
+          }}
+          placeholder="Np. Co jest nie tak z ostatnią rewizją Cloud Run?"
+          maxLength={16000}
+        />
+        <div className={architectStyles.dockComposeRow}>
+          <div className={architectStyles.dockAuth}>
+            {!idToken && <div className={architectStyles.signin} ref={googleButtonRef} />}
+            {idToken && <span className={architectStyles.good}>OPERATOR SIGNED IN</span>}
+          </div>
+          <button className={architectStyles.primary} disabled={sending || !input.trim() || !idToken} onClick={() => void send()}>{sending ? 'ANALIZA…' : 'WYŚLIJ'}</button>
+        </div>
+        {error && (
+          <details className={architectStyles.diagnostics}>
+            <summary>{liveAccess === 'BLOCKED' ? 'Cloud Assist access: BLOCKED' : 'Cloud Assist request failed'}</summary>
+            <pre>{error}</pre>
+          </details>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export default function Home() {
   const [view, setView] = useState<View>('overview');
@@ -146,6 +349,7 @@ export default function Home() {
         {errors.length > 0 && <div className="errorStrip"><Icon name="alert" /><div><b>Odczyt częściowy</b><span>{errors.join(' · ')}</span></div></div>}
 
         {view === 'overview' && <>
+          <CloudArchitectDock projectId={projectId} />
           <section className="hero">
             <div className="heroCopy"><span className="kicker">COMMAND CENTER</span><h2>Buduj. Testuj. Steruj.<br /><em>Z jednego miejsca.</em></h2><p>Agenci, automatyzacje, portfolio projektów, narzędzia developerskie i Google Cloud w jednym mobilnym control plane.</p><div className="heroActions"><button onClick={() => switchView('agents')}><Icon name="bot" /> Agents</button><button onClick={() => switchView('testlab')}><Icon name="flask" /> Test Lab</button><a href="/deploy"><Icon name="rocket" /> Quick deploy</a></div></div>
             <div className="liveCore"><span className="corePulse" /><div><small>SYSTEM CORE</small><strong>{health}</strong><span>{verified}/{deployments.length} deploymentów VERIFIED</span></div></div>
