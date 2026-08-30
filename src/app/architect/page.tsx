@@ -52,6 +52,7 @@ declare global {
 }
 
 const CONTEXT_KEY = 'osa-cloud-architect-context-v01';
+const ID_TOKEN_KEY = 'osa-cloud-architect-id-token-v01';
 
 const quickPrompts = [
   'Zrób read-only audyt tego projektu GCP. Wskaż trzy najważniejsze problemy operacyjne i evidence, które powinienem sprawdzić.',
@@ -86,6 +87,8 @@ export default function ArchitectPage() {
         setStatus(statusData);
         const saved = window.sessionStorage.getItem(CONTEXT_KEY);
         if (saved) setContextId(saved);
+        const savedToken = window.sessionStorage.getItem(ID_TOKEN_KEY);
+        if (savedToken) setIdToken(savedToken);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       }
@@ -101,6 +104,7 @@ export default function ArchitectPage() {
         client_id: authConfig.clientId,
         callback: (response) => {
           if (!response.credential) return;
+          window.sessionStorage.setItem(ID_TOKEN_KEY, response.credential);
           setIdToken(response.credential);
           setError(null);
         },
@@ -171,6 +175,10 @@ export default function ArchitectPage() {
       const data = (await response.json()) as CloudArchitectResponse;
       if (!response.ok || !data.content) {
         const message = data.error ?? `HTTP ${response.status}`;
+        if (response.status === 401) {
+          window.sessionStorage.removeItem(ID_TOKEN_KEY);
+          setIdToken('');
+        }
         if (data.code === 'CLOUD_ASSIST_ACCESS_BLOCKED') setLiveAccess('BLOCKED');
         throw new Error(message);
       }
@@ -290,7 +298,7 @@ export default function ArchitectPage() {
             <h2>Operator identity</h2>
             <div className={styles.stat}><span>Auth</span><b>{authState}</b></div>
             {!idToken && <div className={styles.signin} ref={googleButtonRef} />}
-            {idToken && <button className={styles.button} onClick={() => setIdToken('')}>WYLOGUJ SESJĘ UI</button>}
+            {idToken && <button className={styles.button} onClick={() => { window.sessionStorage.removeItem(ID_TOKEN_KEY); setIdToken(''); }}>WYLOGUJ SESJĘ UI</button>}
           </section>
 
           <section>
