@@ -388,7 +388,7 @@ export default function Home() {
           </div>
         </>}
 
-        {view === 'cloudmap' && <CloudMap2D services={services} vms={vms} deployments={deployments} projectId={projectId} />}
+        {view === 'cloudmap' && <CloudMap2D services={services} vms={vms} deployments={deployments} projectId={projectId} gcpConnected={Boolean(status?.connected)} />}
 
         {view === 'agents' && <SectionPage kicker="AGENT FLEET" title="Agents & runtimes" subtitle="Realne Cloud Run services oraz repozytoria agentowe. Bez fikcyjnych heartbeatów.">
           <div className="cards3">{agents.map((agent) => <article className="agentCard" key={`${agent.source}-${agent.name}`}><div className="cardIcon"><Icon name="bot" /></div><div className="cardHead"><div><small>{agent.source}</small><h3>{agent.name}</h3></div><StatusBadge value={agent.status} /></div><p>{agent.detail}</p><div className="cardActions">{agent.url && <a href={agent.url} target="_blank" rel="noreferrer"><Icon name="external" /> Otwórz</a>}<button onClick={() => { setProbeTarget(agent.url ?? ''); switchView('testlab'); }} disabled={!agent.url}><Icon name="flask" /> Test</button></div></article>)}{agents.length === 0 && <EmptyCard title="Agents UNKNOWN" text="Nie ma jeszcze źródła danych, które potwierdza uruchomione agenty. Repo i runtime inventory nie są udawane." />}</div>
