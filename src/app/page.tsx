@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import architectStyles from './architect/architect.module.css';
+import CloudMap2D from './cloud-map/CloudMap2D';
 
-type View = 'overview' | 'agents' | 'automations' | 'projects' | 'devtools' | 'testlab' | 'deploy' | 'infra' | 'costs';
+type View = 'overview' | 'cloudmap' | 'agents' | 'automations' | 'projects' | 'devtools' | 'testlab' | 'deploy' | 'infra' | 'costs';
 type IconName = 'grid' | 'bot' | 'zap' | 'layers' | 'code' | 'flask' | 'rocket' | 'server' | 'wallet' | 'refresh' | 'external' | 'activity' | 'cloud' | 'terminal' | 'database' | 'lock' | 'github' | 'logs' | 'monitor' | 'check' | 'alert';
 
 type Status = { connected: boolean; projectId: string | null; identity: 'ADC'; principal: string | null; regions: string[]; error?: string };
@@ -39,6 +40,7 @@ const cloudQuickPrompts = [
 
 const nav: Array<{ id: View; label: string; icon: IconName }> = [
   { id: 'overview', label: 'Command', icon: 'grid' },
+  { id: 'cloudmap', label: 'Cloud Map 2D', icon: 'cloud' },
   { id: 'agents', label: 'Agents', icon: 'bot' },
   { id: 'automations', label: 'Automations', icon: 'zap' },
   { id: 'projects', label: 'Portfolio', icon: 'layers' },
@@ -385,6 +387,8 @@ export default function Home() {
             </Panel>
           </div>
         </>}
+
+        {view === 'cloudmap' && <CloudMap2D services={services} vms={vms} deployments={deployments} projectId={projectId} />}
 
         {view === 'agents' && <SectionPage kicker="AGENT FLEET" title="Agents & runtimes" subtitle="Realne Cloud Run services oraz repozytoria agentowe. Bez fikcyjnych heartbeatów.">
           <div className="cards3">{agents.map((agent) => <article className="agentCard" key={`${agent.source}-${agent.name}`}><div className="cardIcon"><Icon name="bot" /></div><div className="cardHead"><div><small>{agent.source}</small><h3>{agent.name}</h3></div><StatusBadge value={agent.status} /></div><p>{agent.detail}</p><div className="cardActions">{agent.url && <a href={agent.url} target="_blank" rel="noreferrer"><Icon name="external" /> Otwórz</a>}<button onClick={() => { setProbeTarget(agent.url ?? ''); switchView('testlab'); }} disabled={!agent.url}><Icon name="flask" /> Test</button></div></article>)}{agents.length === 0 && <EmptyCard title="Agents UNKNOWN" text="Nie ma jeszcze źródła danych, które potwierdza uruchomione agenty. Repo i runtime inventory nie są udawane." />}</div>
