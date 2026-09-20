@@ -42,10 +42,7 @@ type Props = {
   vms: Vm[];
   deployments: Deployment[];
   projectId: string;
-  gcpConnected: boolean;
 };
-
-type Provider = 'all' | 'gcp' | 'azure' | 'aws';
 
 type MapNode = {
   id: string;
@@ -56,7 +53,6 @@ type MapNode = {
   status: string;
   meta: string;
   href?: string | null;
-  provider: 'gcp';
 };
 
 type Camera = { x: number; y: number; zoom: number };
@@ -87,14 +83,7 @@ function nodeStatus(kind: MapNode['kind'], raw: string) {
   return raw || 'UNKNOWN';
 }
 
-const providerMeta: Record<Provider, { label: string; core: string; contextLabel: string; accent: string }> = {
-  all: { label: 'ALL CLOUDS', core: 'MULTI CLOUD CORE', contextLabel: 'FEDERATED VIEW', accent: '#b4a7ff' },
-  gcp: { label: 'GCP', core: 'GCP CORE', contextLabel: 'PROJECT', accent: '#67e8b4' },
-  azure: { label: 'AZURE', core: 'AZURE CORE', contextLabel: 'SUBSCRIPTION', accent: '#6fd7ff' },
-  aws: { label: 'AWS', core: 'AWS CORE', contextLabel: 'ACCOUNT', accent: '#f2c46d' },
-};
-
-export default function CloudMap2D({ services, vms, deployments, projectId, gcpConnected }: Props) {
+export default function CloudMap2D({ services, vms, deployments, projectId }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<Camera>({ x: 0, y: 0, zoom: 0.84 });
@@ -103,9 +92,8 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
   const [selected, setSelected] = useState<MapNode | null>(null);
   const [hovered, setHovered] = useState<MapNode | null>(null);
   const [cameraLabel, setCameraLabel] = useState('0 / 0 / 84%');
-  const [provider, setProvider] = useState<Provider>('all');
 
-  const gcpNodes = useMemo<MapNode[]>(() => {
+  const nodes = useMemo<MapNode[]>(() => {
     const used = new Set<string>();
     const place = (id: string, kind: MapNode['kind'], idx: number, total: number) => {
       const r = mulberry32(hash(id));
@@ -127,7 +115,6 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
         status: nodeStatus('run', service.latestReadyRevision ? 'LIVE' : 'UNKNOWN'),
         meta: `${service.region} · ${service.latestReadyRevision ?? 'revision UNKNOWN'}`,
         href: service.uri,
-        provider: 'gcp' as const,
       };
     });
 
@@ -142,7 +129,6 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
         status: nodeStatus('vm', vm.status),
         meta: `${vm.zone} · ${vm.machineType}`,
         href: `https://console.cloud.google.com/compute/instancesDetail/zones/${encodeURIComponent(vm.zone)}/instances/${encodeURIComponent(vm.name)}?project=${encodeURIComponent(projectId)}`,
-        provider: 'gcp' as const,
       };
     });
 
@@ -159,34 +145,11 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
           status: dep.provenance,
           meta: `${dep.region} · ${dep.revision ?? 'revision UNKNOWN'}`,
           href: dep.url,
-          provider: 'gcp' as const,
         };
       });
 
     return [...runNodes, ...vmNodes, ...orphanDeployments];
   }, [services, vms, deployments, projectId]);
-
-  const nodes = useMemo(
-    () => (provider === 'all' || provider === 'gcp' ? gcpNodes : []),
-    [provider, gcpNodes],
-  );
-
-  const providerState = {
-    gcp: gcpConnected ? 'CONNECTED' : 'DISCONNECTED',
-    azure: 'DISCONNECTED',
-    aws: 'DISCONNECTED',
-  } as const;
-
-  const currentContext = provider === 'gcp'
-    ? projectId
-    : provider === 'all'
-      ? `GCP ${providerState.gcp} · AZURE ${providerState.azure} · AWS ${providerState.aws}`
-      : 'UNKNOWN';
-
-  useEffect(() => {
-    setSelected(null);
-    setHovered(null);
-  }, [provider]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -269,16 +232,14 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
       coreGlow.addColorStop(1, 'rgba(103,232,180,0)');
       ctx.fillStyle = coreGlow;
       ctx.beginPath(); ctx.arc(cx, cy, coreR * 2.4, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = providerMeta[provider].accent;
-      ctx.globalAlpha = provider === 'gcp' && !gcpConnected ? 0.32 : 0.58;
+      ctx.strokeStyle = 'rgba(103,232,180,.5)';
       ctx.beginPath(); ctx.arc(cx, cy, coreR + Math.sin(now / 900) * 3, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(15,24,27,.95)';
       ctx.beginPath(); ctx.arc(cx, cy, coreR * 0.72, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = providerMeta[provider].accent;
+      ctx.fillStyle = '#aef9d7';
       ctx.font = '700 10px system-ui';
       ctx.textAlign = 'center';
-      ctx.fillText(providerMeta[provider].core, cx, cy + 3);
+      ctx.fillText('GCP CORE', cx, cy + 3);
 
       for (const node of nodes) {
         const [sx, sy] = toScreen(node.x, node.y);
@@ -324,7 +285,7 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
       cancelAnimationFrame(frame);
       ro.disconnect();
     };
-  }, [nodes, selected, hovered, provider, gcpConnected]);
+  }, [nodes, selected, hovered]);
 
   const pointToWorld = (clientX: number, clientY: number) => {
     const wrap = wrapRef.current;
@@ -372,39 +333,15 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
           <p>Wyciągnięty widok mapy OSA, przepięty na realne dane Cloud Workspace. Cloud Run, VM i orphan deployments bez tworzenia fikcyjnych zasobów.</p>
         </div>
         <div className={styles.metrics}>
-          <div><b>{services.length}</b><span>GCP Run</span></div>
-          <div><b>{vms.length}</b><span>GCP VM</span></div>
-          <div><b>3</b><span>Providers</span></div>
-        </div>
-      </div>
-
-      <div className={styles.providerBar}>
-        <div className={styles.providerSwitch} role="tablist" aria-label="Cloud provider">
-          {(['all', 'gcp', 'azure', 'aws'] as Provider[]).map((item) => (
-            <button
-              key={item}
-              role="tab"
-              aria-selected={provider === item}
-              className={provider === item ? styles.providerActive : ''}
-              onClick={() => setProvider(item)}
-            >
-              <span>{providerMeta[item].label}</span>
-              {item !== 'all' && (
-                <i className={item === 'gcp' && gcpConnected ? styles.connected : styles.disconnected} />
-              )}
-            </button>
-          ))}
-        </div>
-        <div className={styles.providerTruth}>
-          <span>GCP <b className={gcpConnected ? styles.good : styles.off}>{providerState.gcp}</b></span>
-          <span>AZURE <b className={styles.off}>{providerState.azure}</b></span>
-          <span>AWS <b className={styles.off}>{providerState.aws}</b></span>
+          <div><b>{services.length}</b><span>Cloud Run</span></div>
+          <div><b>{vms.length}</b><span>VM</span></div>
+          <div><b>{deployments.length}</b><span>Deployments</span></div>
         </div>
       </div>
 
       <div className={styles.mapShell}>
         <div className={styles.mapToolbar}>
-          <div><span>{providerMeta[provider].contextLabel}</span><b>{currentContext}</b></div>
+          <div><span>PROJECT</span><b>{projectId}</b></div>
           <div className={styles.legend}>
             <span><i className={styles.runDot} /> RUN</span>
             <span><i className={styles.vmDot} /> VM</span>
@@ -493,21 +430,8 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
           <div className={styles.coords}>{cameraLabel}</div>
           {nodes.length === 0 && (
             <div className={styles.empty}>
-              <strong>
-                {provider === 'azure' ? 'AZURE ADAPTER — DISCONNECTED' :
-                 provider === 'aws' ? 'AWS ADAPTER — DISCONNECTED' :
-                 provider === 'gcp' && !gcpConnected ? 'GCP ADAPTER — DISCONNECTED' :
-                 'MAPA CZEKA NA INVENTORY'}
-              </strong>
-              <span>
-                {provider === 'azure'
-                  ? 'Brak podłączonej subskrypcji Azure. Nie renderuję Resource Groups, Container Apps ani VM bez evidence.'
-                  : provider === 'aws'
-                    ? 'Brak podłączonego konta AWS. Nie renderuję ECS, Lambda ani EC2 bez evidence.'
-                    : provider === 'gcp'
-                      ? 'Brak potwierdzonych Cloud Run / VM / deployment nodes w aktywnym projekcie.'
-                      : 'ALL CLOUDS pokazuje wyłącznie potwierdzone zasoby. Azure i AWS pozostają DISCONNECTED.'}
-              </span>
+              <strong>MAPA CZEKA NA INVENTORY</strong>
+              <span>Brak potwierdzonych Cloud Run / VM / deployment nodes. Niczego nie generuję z nazwy projektu.</span>
             </div>
           )}
         </div>
@@ -527,22 +451,11 @@ export default function CloudMap2D({ services, vms, deployments, projectId, gcpC
             </>
           ) : (
             <>
-              <span>PROVIDER CONTROL</span>
-              <h3>{providerMeta[provider].label}</h3>
-              <div className={styles.providerStatusGrid}>
-                <div><dt>GCP</dt><dd className={gcpConnected ? styles.good : styles.off}>{providerState.gcp}</dd></div>
-                <div><dt>AZURE</dt><dd className={styles.off}>{providerState.azure}</dd></div>
-                <div><dt>AWS</dt><dd className={styles.off}>{providerState.aws}</dd></div>
-              </div>
-              <p>
-                {provider === 'all'
-                  ? 'Federated view: pokazuję tylko zasoby z providerów posiadających evidence. Brak adaptera nie tworzy sztucznych node’ów.'
-                  : provider === 'gcp'
-                    ? 'GCP korzysta z istniejącego live inventory Cloud Workspace.'
-                    : `${providerMeta[provider].label} jest przygotowany jako warstwa UI, ale adapter danych pozostaje DISCONNECTED.`}
-              </p>
+              <span>NODE INSPECTOR</span>
+              <h3>Wybierz zasób</h3>
+              <p>Przeciągnij mapę, użyj scroll/pinch do zoomu i dotknij węzła, aby zobaczyć evidence.</p>
               <dl>
-                <div><dt>Kontekst</dt><dd>{currentContext}</dd></div>
+                <div><dt>Źródło</dt><dd>/api/gcp/*</dd></div>
                 <div><dt>Tryb</dt><dd>READ ONLY</dd></div>
               </dl>
             </>
