@@ -416,6 +416,11 @@ export default function CloudMap2D({ services, vms, deployments, projectId }: Pr
           }}
           onTouchEnd={(event) => {
             if (event.touches.length === 0) {
+              const changed = event.changedTouches[0];
+              const wasDrag = changed
+                ? Math.hypot(changed.clientX - dragRef.current.x, changed.clientY - dragRef.current.y) > 8
+                : true;
+              if (changed && !wasDrag) setSelected(pick(changed.clientX, changed.clientY));
               dragRef.current.active = false;
               touchDistanceRef.current = null;
             }
