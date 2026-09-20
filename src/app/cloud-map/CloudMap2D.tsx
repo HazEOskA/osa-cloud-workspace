@@ -164,7 +164,7 @@ export default function CloudMap2D({ services, vms, deployments, projectId }: Pr
     let height = 0;
     let dpr = 1;
     const dust = Array.from({ length: 170 }, (_, i) => {
-      const r = mulberry32(0x0sa + i + 1);
+      const r = mulberry32(0x05a + i + 1);
       return {
         x: (r() - 0.5) * 4200,
         y: (r() - 0.5) * 2800,
