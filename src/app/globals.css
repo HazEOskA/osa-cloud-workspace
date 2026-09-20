@@ -35,7 +35,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .appShell { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0, 1fr); }
 .sideNav {
-  position: sticky; top: 0; height: 100vh; z-index: 30;
+  position: sticky; top: 88px; height: calc(100vh - 88px); z-index: 30;
   border-right: 1px solid var(--line);
   background: rgba(7, 9, 13, .93); backdrop-filter: blur(20px);
   padding: 20px 14px; display: flex; flex-direction: column;
@@ -62,7 +62,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .sideFooter small { display: block; padding: 9px 12px 0; color: #444b56; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
 
 .workspace { min-width: 0; padding: 0 clamp(18px, 3vw, 42px) 72px; }
-.topBar { min-height: 88px; position: sticky; top: 0; z-index: 20; margin: 0 calc(clamp(18px, 3vw, 42px) * -1); padding: 14px clamp(18px, 3vw, 42px); display: flex; align-items: center; justify-content: space-between; gap: 20px; background: rgba(7,9,13,.82); border-bottom: 1px solid var(--line); backdrop-filter: blur(18px); }
+.topBar { min-height: 88px; position: sticky; top: 88px; z-index: 20; margin: 0 calc(clamp(18px, 3vw, 42px) * -1); padding: 14px clamp(18px, 3vw, 42px); display: flex; align-items: center; justify-content: space-between; gap: 20px; background: rgba(7,9,13,.82); border-bottom: 1px solid var(--line); backdrop-filter: blur(18px); }
 .topBar h1 { margin: 4px 0 0; font-size: 22px; letter-spacing: -.04em; }
 .kicker { color: #676e7b; font-size: 9px; letter-spacing: .18em; text-transform: uppercase; }
 .topActions { display: flex; gap: 8px; }
@@ -241,7 +241,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .appShell { display:block; }
   .sideNav { display:none; }
   .workspace { padding:0 12px 92px; }
-  .topBar { min-height:66px; margin:0 -12px; padding:10px 14px; }
+  .topBar { top:78px; min-height:66px; margin:0 -12px; padding:10px 14px; }
   .topBar h1 { font-size:17px; }
   .topBar .kicker { font-size:7px; }
   .topActions .ghost { display:none; }

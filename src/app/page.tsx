@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import architectStyles from './architect/architect.module.css';
+import CloudMap2D from './cloud-map/CloudMap2D';
+import { CloudProviderSwitcher, DisconnectedCloudApp, type CloudProvider } from './cloud-shell/MultiCloudShell';
 
-type View = 'overview' | 'agents' | 'automations' | 'projects' | 'devtools' | 'testlab' | 'deploy' | 'infra' | 'costs';
+type View = 'overview' | 'cloudmap' | 'agents' | 'automations' | 'projects' | 'devtools' | 'testlab' | 'deploy' | 'infra' | 'costs';
 type IconName = 'grid' | 'bot' | 'zap' | 'layers' | 'code' | 'flask' | 'rocket' | 'server' | 'wallet' | 'refresh' | 'external' | 'activity' | 'cloud' | 'terminal' | 'database' | 'lock' | 'github' | 'logs' | 'monitor' | 'check' | 'alert';
 
 type Status = { connected: boolean; projectId: string | null; identity: 'ADC'; principal: string | null; regions: string[]; error?: string };
@@ -39,6 +41,7 @@ const cloudQuickPrompts = [
 
 const nav: Array<{ id: View; label: string; icon: IconName }> = [
   { id: 'overview', label: 'Command', icon: 'grid' },
+  { id: 'cloudmap', label: 'Cloud Map 2D', icon: 'cloud' },
   { id: 'agents', label: 'Agents', icon: 'bot' },
   { id: 'automations', label: 'Automations', icon: 'zap' },
   { id: 'projects', label: 'Portfolio', icon: 'layers' },
@@ -265,6 +268,7 @@ function CloudArchitectDock({ projectId }: { projectId: string }) {
 }
 
 export default function Home() {
+  const [activeProvider, setActiveProvider] = useState<CloudProvider>('gcp');
   const [view, setView] = useState<View>('overview');
   const [status, setStatus] = useState<Status | null>(null);
   const [inventory, setInventory] = useState<Inventory | null>(null);
@@ -340,7 +344,18 @@ export default function Home() {
   const switchView = (next: View) => { setView(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (
-    <div className="appShell">
+    <>
+      <CloudProviderSwitcher
+        active={activeProvider}
+        onChange={(provider) => {
+          setActiveProvider(provider);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        gcpConnected={Boolean(status?.connected)}
+      />
+
+      {activeProvider === 'gcp' ? (
+        <div className="appShell">
       <aside className="sideNav">
         <div className="brand"><div className="brandMark">O</div><div><strong>OSA CLOUD</strong><span>WORKSPACE // V2</span></div></div>
         <div className="sideStatus"><span className={`dot ${status?.connected ? 'ok' : ''}`} /><div><b>{health}</b><small>{status?.projectId ?? 'PROJECT UNKNOWN'}</small></div></div>
@@ -386,6 +401,8 @@ export default function Home() {
           </div>
         </>}
 
+        {view === 'cloudmap' && <CloudMap2D services={services} vms={vms} deployments={deployments} projectId={projectId} />}
+
         {view === 'agents' && <SectionPage kicker="AGENT FLEET" title="Agents & runtimes" subtitle="Realne Cloud Run services oraz repozytoria agentowe. Bez fikcyjnych heartbeatów.">
           <div className="cards3">{agents.map((agent) => <article className="agentCard" key={`${agent.source}-${agent.name}`}><div className="cardIcon"><Icon name="bot" /></div><div className="cardHead"><div><small>{agent.source}</small><h3>{agent.name}</h3></div><StatusBadge value={agent.status} /></div><p>{agent.detail}</p><div className="cardActions">{agent.url && <a href={agent.url} target="_blank" rel="noreferrer"><Icon name="external" /> Otwórz</a>}<button onClick={() => { setProbeTarget(agent.url ?? ''); switchView('testlab'); }} disabled={!agent.url}><Icon name="flask" /> Test</button></div></article>)}{agents.length === 0 && <EmptyCard title="Agents UNKNOWN" text="Nie ma jeszcze źródła danych, które potwierdza uruchomione agenty. Repo i runtime inventory nie są udawane." />}</div>
         </SectionPage>}
@@ -429,7 +446,11 @@ export default function Home() {
       </main>
 
       <nav className="mobileNav">{nav.slice(0, 5).map((item) => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => switchView(item.id)}><Icon name={item.icon} /><span>{item.label}</span></button>)}<button onClick={() => switchView(view === 'devtools' ? 'overview' : 'devtools')}><Icon name="grid" /><span>More</span></button></nav>
-    </div>
+        </div>
+      ) : (
+        <DisconnectedCloudApp provider={activeProvider} />
+      )}
+    </>
   );
 }
 
